@@ -822,9 +822,13 @@ class SmartDashboard:
         cb.pack(anchor="w")
 
         def do_test():
+            global PRINTER_SETTING
             btn_test.config(text="출력 중...", state="disabled")
             win.update()
+            _orig = PRINTER_SETTING
+            PRINTER_SETTING = cb.get()   # 저장 전이어도 현재 선택값으로 테스트
             process_test_print()
+            PRINTER_SETTING = _orig      # 테스트 후 복원 (저장은 별도)
             btn_test.config(text="테스트 출력", state="normal")
 
         btn_test = tk.Button(tab1, text="테스트 출력", command=do_test,
