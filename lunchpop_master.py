@@ -12,11 +12,18 @@ import re
 import serial
 import json
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import messagebox, scrolledtext
+import customtkinter as ctk
 import subprocess
 import winreg
 import hashlib
 import shutil
+
+# ==========================================
+# [UI 전역 설정]
+# ==========================================
+ctk.set_appearance_mode("light")
+ctk.set_default_color_theme("blue")
 
 # ==========================================
 # [설정] 버전 및 URL
@@ -196,7 +203,7 @@ def _center_window(win):
 def select_store_ui():
     global PRINTER_SETTING, MY_STORE_NAME
 
-    root = tk.Tk()
+    root = ctk.CTk()
     root.title(f"런치팝 초기 설정 (v{CURRENT_VERSION})")
     root.attributes('-topmost', True)
     root.resizable(False, False)
@@ -205,44 +212,53 @@ def select_store_ui():
     def on_close():
         if messagebox.askyesno("종료 확인", "설정을 완료하지 않으면 프로그램이 종료됩니다.\n종료하시겠습니까?"):
             root.destroy()
-
     root.protocol("WM_DELETE_WINDOW", on_close)
 
-    header = tk.Frame(root, bg="#e74c3c", pady=10)
+    # 헤더
+    header = ctk.CTkFrame(root, fg_color="#e74c3c", corner_radius=0, height=90)
     header.pack(fill="x")
-    tk.Label(header, text="런치팝 포스 설정", fg="white", bg="#e74c3c",
-             font=("맑은 고딕", 14, "bold")).pack()
-    tk.Label(header, text=f"v{CURRENT_VERSION}", fg="#fadbd8", bg="#e74c3c",
-             font=("맑은 고딕", 9)).pack()
+    header.pack_propagate(False)
+    ctk.CTkLabel(header, text="🍱  런치팝 POS",
+                  font=ctk.CTkFont("맑은 고딕", 22, "bold"),
+                  text_color="white").pack(pady=(18, 0))
+    ctk.CTkLabel(header, text=f"v{CURRENT_VERSION}  —  매장 초기 설정",
+                  font=ctk.CTkFont("맑은 고딕", 10),
+                  text_color="#fadbd8").pack()
 
-    body = tk.Frame(root, padx=25, pady=10)
-    body.pack(fill="x")
+    # 배경 프레임
+    bg = ctk.CTkFrame(root, fg_color="#f4f6f7", corner_radius=0)
+    bg.pack(fill="both", expand=True)
 
-    tk.Label(body, text="1. 매장명을 선택해주세요", font=("맑은 고딕", 11, "bold")).pack(anchor="w", pady=(6, 3))
-    store_combo = ttk.Combobox(body, values=["로딩 중..."], state="normal", width=30, font=("맑은 고딕", 11))
-    store_combo.pack(anchor="w")
+    # 카드
+    card = ctk.CTkFrame(bg, corner_radius=16, fg_color="white",
+                         border_width=1, border_color="#e8ecef")
+    card.pack(fill="both", expand=True, padx=24, pady=20)
+
+    # 매장명
+    ctk.CTkLabel(card, text="매장명 선택",
+                  font=ctk.CTkFont("맑은 고딕", 12, "bold"),
+                  text_color="#2c3e50").pack(anchor="w", padx=20, pady=(20, 2))
+    ctk.CTkLabel(card, text="운영 중인 매장명을 선택해주세요",
+                  font=ctk.CTkFont("맑은 고딕", 10),
+                  text_color="#95a5a6").pack(anchor="w", padx=20)
+
+    store_combo = ctk.CTkComboBox(card, values=["로딩 중..."], width=340,
+                                   font=ctk.CTkFont("맑은 고딕", 11),
+                                   border_color="#dce1e7",
+                                   button_color="#e74c3c", button_hover_color="#c0392b",
+                                   dropdown_hover_color="#fdecea")
+    store_combo.pack(padx=20, pady=(8, 0))
     store_combo.set("로딩 중...")
 
-    def load_stores():
-        try:
-            resp = requests.get(f"{WEB_APP_URL}?action=getStores", timeout=10)
-            if resp.status_code == 200:
-                stores = resp.json()
-                store_combo.config(values=stores)
-                if stores:
-                    store_combo.current(0)
-                    on_store_change()
-                return
-        except Exception as e:
-            write_local_log(f"[ERR] 매장 목록 로드 실패: {e}")
-        fallback = ["덮밥천재", "직접입력"]
-        store_combo.config(values=fallback)
-        store_combo.current(0)
-        on_store_change()
+    ctk.CTkFrame(card, height=1, fg_color="#f0f0f0").pack(fill="x", padx=20, pady=16)
 
-    threading.Thread(target=load_stores, daemon=True).start()
-
-    tk.Label(body, text="2. 프린터 연결 방식을 선택해주세요", font=("맑은 고딕", 11, "bold")).pack(anchor="w", pady=(12, 3))
+    # 프린터
+    ctk.CTkLabel(card, text="프린터 선택",
+                  font=ctk.CTkFont("맑은 고딕", 12, "bold"),
+                  text_color="#2c3e50").pack(anchor="w", padx=20, pady=(0, 2))
+    ctk.CTkLabel(card, text="영수증 프린터 연결 방식을 선택해주세요",
+                  font=ctk.CTkFont("맑은 고딕", 10),
+                  text_color="#95a5a6").pack(anchor="w", padx=20)
 
     printer_list = ["기본 프린터"]
     try:
@@ -253,28 +269,58 @@ def select_store_ui():
         pass
     printer_list += [f"COM{i}" for i in range(1, 13)]
 
-    printer_combo = ttk.Combobox(body, values=printer_list, state="readonly", width=30, font=("맑은 고딕", 11))
-    printer_combo.pack(anchor="w")
+    printer_combo = ctk.CTkComboBox(card, values=printer_list, width=340,
+                                     font=ctk.CTkFont("맑은 고딕", 11),
+                                     border_color="#dce1e7",
+                                     button_color="#e74c3c", button_hover_color="#c0392b")
+    printer_combo.pack(padx=20, pady=(8, 0))
     printer_combo.set(CONFIG.get("printer", "기본 프린터"))
 
+    ctk.CTkFrame(card, height=1, fg_color="#f0f0f0").pack(fill="x", padx=20, pady=16)
+
     autostart_var = tk.BooleanVar(value=True)
-    tk.Checkbutton(body, text="윈도우 시작 시 자동 실행 (권장)", variable=autostart_var,
-                   font=("맑은 고딕", 10)).pack(anchor="w", pady=(10, 0))
+    ctk.CTkCheckBox(card, text="윈도우 시작 시 자동 실행 (권장)",
+                     variable=autostart_var,
+                     font=ctk.CTkFont("맑은 고딕", 11),
+                     checkmark_color="white", fg_color="#e74c3c",
+                     hover_color="#c0392b").pack(anchor="w", padx=20)
 
-    confirm_btn = tk.Button(body, text="설정 완료 및 시작", state="disabled",
-                             width=22, height=2, bg="#95a5a6", fg="white",
-                             font=("맑은 고딕", 11, "bold"))
-    confirm_btn.pack(pady=(12, 6))
+    confirm_btn = ctk.CTkButton(card, text="설정 완료 및 시작  →",
+                                  font=ctk.CTkFont("맑은 고딕", 13, "bold"),
+                                  fg_color="#bdc3c7", hover_color="#95a5a6",
+                                  height=46, corner_radius=10, state="disabled")
+    confirm_btn.pack(fill="x", padx=20, pady=(16, 20))
 
-    def on_store_change(*_args):
+    def on_store_change(*_):
         val = store_combo.get().strip()
         if val and val not in ("로딩 중...", ""):
-            confirm_btn.config(state="normal", bg="#27ae60")
+            confirm_btn.configure(state="normal", fg_color="#e74c3c", hover_color="#c0392b")
         else:
-            confirm_btn.config(state="disabled", bg="#95a5a6")
+            confirm_btn.configure(state="disabled", fg_color="#bdc3c7", hover_color="#95a5a6")
 
-    store_combo.bind("<<ComboboxSelected>>", on_store_change)
-    store_combo.bind("<KeyRelease>", on_store_change)
+    store_combo.configure(command=lambda v: on_store_change())
+
+    def load_stores():
+        try:
+            resp = requests.get(f"{WEB_APP_URL}?action=getStores", timeout=10)
+            if resp.status_code == 200:
+                stores = resp.json()
+                root.after(0, lambda: (
+                    store_combo.configure(values=stores),
+                    store_combo.set(stores[0]) if stores else None,
+                    on_store_change()
+                ))
+                return
+        except Exception as e:
+            write_local_log(f"[ERR] 매장 목록 로드 실패: {e}")
+        fallback = ["덮밥천재", "직접입력"]
+        root.after(0, lambda: (
+            store_combo.configure(values=fallback),
+            store_combo.set(fallback[0]),
+            on_store_change()
+        ))
+
+    threading.Thread(target=load_stores, daemon=True).start()
 
     def on_confirm():
         global PRINTER_SETTING, MY_STORE_NAME
@@ -292,7 +338,7 @@ def select_store_ui():
         set_autostart_registry(autostart_var.get())
         root.destroy()
 
-    confirm_btn.config(command=on_confirm)
+    confirm_btn.configure(command=on_confirm)
     _center_window(root)
     root.mainloop()
 
@@ -327,7 +373,6 @@ def print_raw_text(receipt_bytes):
                     time.sleep(0.5)
                 return True
             else:
-                # 이름으로 직접 지정된 프린터
                 hPrinter = win32print.OpenPrinter(PRINTER_SETTING)
                 try:
                     win32print.StartDocPrinter(hPrinter, 1, ("LunchPopOrder", None, "RAW"))
@@ -445,7 +490,6 @@ def run_auto_updater():
                     update_url = data.get("url", "")
                     expected_sha256 = data.get("sha256", "")
 
-                    # 메인 스레드에서 사용자 승인 요청
                     approved = [False]
                     done_event = threading.Event()
 
@@ -466,8 +510,6 @@ def run_auto_updater():
                     temp_exe = os.path.join(BASE_DIR, "update_new.exe")
                     write_local_log(f"[INFO] 업데이트 다운로드 시작: v{server_version}")
 
-                    # GitHub Private 저장소 대응: GAS가 token을 내려줄 경우 헤더에 포함
-                    # Public 저장소이면 token 없이도 동작 (headers 무시됨)
                     gh_token = data.get("gh_token", "")
                     dl_headers = {"Authorization": f"token {gh_token}"} if gh_token else {}
 
@@ -537,12 +579,10 @@ def run_auto_printer():
                     dashboard.root.after(0, lambda: dashboard.update_sync_status(True))
 
                 if isinstance(server_data, list):
-                    # 서버 데이터 병합: 로컬 인쇄 완료 상태 우선
                     with orders_lock:
                         for o in server_data:
                             if o.get('orderNo', '') in printed_ids:
                                 o['isPrinted'] = True
-                            # 초기 로드 시 서버의 isPrinted=True를 printed_ids에 반영
                             elif o.get('isPrinted'):
                                 printed_ids.add(o.get('orderNo', ''))
                         GLOBAL_ORDERS = server_data
@@ -556,12 +596,14 @@ def run_auto_printer():
                         t, d, p = total, done_count, len(pending)
                         dashboard.root.after(0, lambda _t=t, _d=d, _p=p: dashboard.update_counts(_t, _d, _p))
 
+                    # 알람은 대기 주문이 있을 때 1번만 재생
+                    if pending and os.path.exists(ALARM_FILE):
+                        try:
+                            winsound.PlaySound(ALARM_FILE, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                        except Exception as e:
+                            write_local_log(f"[WARN] 알람 재생 실패: {e}")
+
                     for o in pending:
-                        if os.path.exists(ALARM_FILE):
-                            try:
-                                winsound.PlaySound(ALARM_FILE, winsound.SND_FILENAME | winsound.SND_ASYNC)
-                            except Exception as e:
-                                write_local_log(f"[WARN] 알람 재생 실패: {e}")
                         if process_print(o):
                             with orders_lock:
                                 o['isPrinted'] = True
@@ -588,136 +630,136 @@ def run_auto_printer():
 # [4] 스마트 대시보드 UI
 # ==========================================
 class SmartDashboard:
-    NORMAL_BG = "#2c3e50"
+    DASH_BG    = "#1a1a2e"
     PENDING_BG = "#c0392b"
-    BTN_BG = "#34495e"
+    BTN_BG     = "#16213e"
+    BTN_HOVER  = "#0f3460"
 
     def __init__(self):
-        self.root = tk.Tk()
+        self.root = ctk.CTk()
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
-        self.base_w = 660
-        self.base_h = 75
-        self._current_bg = self.NORMAL_BG
+        self.base_w = 680
+        self.base_h = 80
         self._has_error = False
         self.list_win = None
+        self.scroll_frame = None
 
+        # 위치 복원 (화면 밖이면 기본 위치로)
+        sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         pos_x, pos_y = CONFIG.get("dash_x"), CONFIG.get("dash_y")
-        if pos_x is not None:
+        if (pos_x is not None and
+                0 <= pos_x <= sw - self.base_w and
+                0 <= pos_y <= sh - self.base_h):
             self.root.geometry(f"{self.base_w}x{self.base_h}+{pos_x}+{pos_y}")
         else:
-            sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
             self.root.geometry(f"{self.base_w}x{self.base_h}+{sw - self.base_w - 10}+{sh - self.base_h - 50}")
 
-        self.root.configure(bg=self.NORMAL_BG)
+        self.root.configure(fg_color=self.DASH_BG)
 
-        # 드래그 바인딩 (에러 프레임 제외)
+        # 드래그 바인딩
         self.root.bind("<Button-1>", self.start_move)
         self.root.bind("<B1-Motion>", self.do_move)
         self.root.bind("<ButtonRelease-1>", self.save_pos)
 
         # ── 메인 프레임 ──
-        self.main_frame = tk.Frame(self.root, bg=self.NORMAL_BG)
-        self.main_frame.pack(fill="x", padx=12, pady=6)
+        self.main_frame = ctk.CTkFrame(self.root, fg_color="transparent")
+        self.main_frame.pack(fill="both", expand=True, padx=14, pady=10)
 
         # 왼쪽: 매장명 + 카운트
-        self.left_frame = tk.Frame(self.main_frame, bg=self.NORMAL_BG)
+        self.left_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.left_frame.pack(side="left", fill="both", expand=True)
 
-        self.store_label = tk.Label(
+        self.store_label = ctk.CTkLabel(
             self.left_frame, text=f"[ {MY_STORE_NAME} ]",
-            fg="#95a5a6", bg=self.NORMAL_BG, font=("맑은 고딕", 9))
+            font=ctk.CTkFont("맑은 고딕", 9), text_color="#7f8c8d")
         self.store_label.pack(anchor="w")
 
-        self.info_label = tk.Label(
+        self.info_label = ctk.CTkLabel(
             self.left_frame, text="서버 연결 중...",
-            fg="white", bg=self.NORMAL_BG, font=("맑은 고딕", 12, "bold"))
+            font=ctk.CTkFont("맑은 고딕", 13, "bold"), text_color="white")
         self.info_label.pack(anchor="w")
 
         # 오른쪽: 상태 + 버튼
-        self.right_frame = tk.Frame(self.main_frame, bg=self.NORMAL_BG)
+        self.right_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.right_frame.pack(side="right")
 
-        self.sync_frame = tk.Frame(self.right_frame, bg=self.NORMAL_BG)
-        self.sync_frame.pack(anchor="e", pady=(0, 3))
+        self.sync_frame = ctk.CTkFrame(self.right_frame, fg_color="transparent")
+        self.sync_frame.pack(anchor="e", pady=(0, 4))
 
-        self.sync_dot = tk.Label(self.sync_frame, text="●", fg="#2ecc71", bg=self.NORMAL_BG, font=("Arial", 9))
+        self.sync_dot = ctk.CTkLabel(
+            self.sync_frame, text="●",
+            font=ctk.CTkFont("Arial", 9), text_color="#2ecc71")
         self.sync_dot.pack(side="left")
-        self.sync_label = tk.Label(self.sync_frame, text="연결 중", fg="#95a5a6", bg=self.NORMAL_BG,
-                                    font=("맑은 고딕", 9))
+        self.sync_label = ctk.CTkLabel(
+            self.sync_frame, text="연결 중",
+            font=ctk.CTkFont("맑은 고딕", 9), text_color="#7f8c8d")
         self.sync_label.pack(side="left", padx=3)
 
-        self.btn_frame = tk.Frame(self.right_frame, bg=self.NORMAL_BG)
+        self.btn_frame = ctk.CTkFrame(self.right_frame, fg_color="transparent")
         self.btn_frame.pack(anchor="e")
 
-        self.btn_list = tk.Button(
-            self.btn_frame, text="주문리스트 ▼", command=self.toggle_list,
-            bg=self.BTN_BG, fg="white", relief="flat",
-            font=("맑은 고딕", 10, "bold"), padx=8, pady=2)
+        self.btn_list = ctk.CTkButton(
+            self.btn_frame, text="주문리스트 ▼", width=114, height=28,
+            font=ctk.CTkFont("맑은 고딕", 10, "bold"),
+            fg_color=self.BTN_BG, hover_color=self.BTN_HOVER,
+            corner_radius=8, command=self.toggle_list)
         self.btn_list.pack(side="left", padx=2)
 
-        tk.Button(self.btn_frame, text="설정", command=self.open_settings,
-                  bg=self.BTN_BG, fg="white", relief="flat",
-                  font=("맑은 고딕", 10), padx=8, pady=2).pack(side="left", padx=2)
+        ctk.CTkButton(
+            self.btn_frame, text="설정", width=52, height=28,
+            font=ctk.CTkFont("맑은 고딕", 10),
+            fg_color=self.BTN_BG, hover_color=self.BTN_HOVER,
+            corner_radius=8, command=self.open_settings).pack(side="left", padx=2)
 
-        tk.Button(self.btn_frame, text="─", command=lambda: self.root.withdraw(),
-                  bg=self.BTN_BG, fg="white", relief="flat",
-                  font=("Arial", 10), padx=5, pady=2).pack(side="left", padx=2)
+        ctk.CTkButton(
+            self.btn_frame, text="─", width=32, height=28,
+            font=ctk.CTkFont("Arial", 10),
+            fg_color=self.BTN_BG, hover_color=self.BTN_HOVER,
+            corner_radius=8, command=lambda: self.root.withdraw()).pack(side="left", padx=2)
 
         # ── 에러 배너 (기본 숨김) ──
-        self.error_frame = tk.Frame(self.root, bg="#e74c3c")
-        self.error_label = tk.Label(self.error_frame, text="", fg="white", bg="#e74c3c",
-                                     font=("맑은 고딕", 10, "bold"))
-        self.error_label.pack(side="left", padx=10, pady=5)
-        tk.Button(self.error_frame, text="확인", command=self.dismiss_error,
-                  bg="#c0392b", fg="white", relief="flat",
-                  font=("맑은 고딕", 9), padx=8).pack(side="right", padx=6)
-
-        # 배경 변경 대상 위젯 목록 (버튼 제외)
-        self._bg_targets = [
-            self.main_frame, self.left_frame, self.right_frame,
-            self.sync_frame, self.btn_frame,
-            self.store_label, self.info_label, self.sync_dot, self.sync_label
-        ]
-
-    def _set_bg(self, color):
-        self._current_bg = color
-        self.root.configure(bg=color)
-        for w in self._bg_targets:
-            try:
-                w.configure(bg=color)
-            except Exception:
-                pass
+        self.error_frame = ctk.CTkFrame(self.root, fg_color="#e74c3c", corner_radius=0, height=36)
+        self.error_label = ctk.CTkLabel(
+            self.error_frame, text="",
+            font=ctk.CTkFont("맑은 고딕", 10, "bold"), text_color="white")
+        self.error_label.pack(side="left", padx=10, pady=6)
+        ctk.CTkButton(
+            self.error_frame, text="확인", width=50, height=24,
+            font=ctk.CTkFont("맑은 고딕", 9),
+            fg_color="#c0392b", hover_color="#a93226",
+            corner_radius=6, command=self.dismiss_error).pack(side="right", padx=8)
 
     def update_sync_status(self, success, fail_count=0):
         if success:
-            self.sync_dot.config(fg="#2ecc71")
-            self.sync_label.config(text=datetime.now().strftime("%H:%M"), fg="#95a5a6")
+            self.sync_dot.configure(text_color="#2ecc71")
+            self.sync_label.configure(
+                text=datetime.now().strftime("%H:%M"), text_color="#7f8c8d")
         else:
-            self.sync_dot.config(fg="#e74c3c")
+            self.sync_dot.configure(text_color="#e74c3c")
             if fail_count >= 3:
-                self.sync_label.config(text="서버 오류", fg="#e74c3c")
+                self.sync_label.configure(text="서버 오류", text_color="#e74c3c")
             else:
-                self.sync_label.config(text="연결 중...", fg="#e67e22")
+                self.sync_label.configure(text="연결 중...", text_color="#e67e22")
 
     def update_counts(self, total, done, pending):
-        self.info_label.config(
+        self.info_label.configure(
             text=f"오늘 {total}건  |  완료 {done}  |  대기 {pending}",
-            fg="#ff7675" if pending > 0 else "white"
+            text_color="#ff6b6b" if pending > 0 else "white"
         )
         if pending > 0:
-            self._set_bg(self.PENDING_BG)
-            self.store_label.config(fg="#fadbd8")
+            self.root.configure(fg_color=self.PENDING_BG)
         else:
-            self._set_bg(self.NORMAL_BG)
-            self.store_label.config(fg="#95a5a6")
+            self.root.configure(fg_color=self.DASH_BG)
+            self.store_label.configure(text_color="#7f8c8d")
 
     def show_print_error(self, order):
         self._has_error = True
         order_no = order.get('orderNo', '')[-4:]
         name = order.get('customerName', '')
-        self.error_label.config(text=f"  인쇄 실패  [{order_no}] {name}  —  주문리스트에서 재출력하세요")
-        self.error_frame.pack(fill="x")
+        self.error_label.configure(
+            text=f"  인쇄 실패  [{order_no}] {name}  —  주문리스트에서 재출력하세요")
+        self.error_frame.pack(fill="x", side="bottom")
         self.root.geometry(
             f"{self.base_w}x{self.base_h + 36}+{self.root.winfo_x()}+{self.root.winfo_y()}")
         try:
@@ -749,21 +791,28 @@ class SmartDashboard:
         self.root.attributes("-topmost", True)
 
     def open_settings(self):
-        win = tk.Toplevel(self.root)
+        win = ctk.CTkToplevel(self.root)
         win.title("런치팝 설정")
         win.attributes("-topmost", True)
         win.grab_set()
         win.resizable(False, False)
+        win.configure(fg_color="#f4f6f7")
         _set_icon(win)
 
-        nb = ttk.Notebook(win)
-        nb.pack(fill="both", expand=True, padx=8, pady=4)
+        tabview = ctk.CTkTabview(
+            win, fg_color="white",
+            segmented_button_fg_color="#ecf0f1",
+            segmented_button_selected_color="#e74c3c",
+            segmented_button_selected_hover_color="#c0392b",
+            segmented_button_unselected_color="#ecf0f1",
+            segmented_button_unselected_hover_color="#dde1e2",
+            text_color="#2c3e50")
+        tabview.pack(fill="both", expand=True, padx=12, pady=12)
 
-        # ── 탭 1: 프린터 / 매장 설정 ──
-        tab1 = tk.Frame(nb, padx=18, pady=10)
-        nb.add(tab1, text="  설정  ")
+        tab1 = tabview.add("  설정  ")
+        tab2 = tabview.add("  로그  ")
 
-        # 설정 저장 버튼을 하단에 고정 (먼저 pack해야 bottom이 우선 확보됨)
+        # ── 탭1: 설정 ──
         def _save():
             global PRINTER_SETTING, MY_STORE_NAME
             new_store = store_entry.get().strip()
@@ -777,36 +826,52 @@ class SmartDashboard:
             CONFIG["autostart"] = av.get()
             if save_config(CONFIG):
                 set_autostart_registry(av.get())
-                self.store_label.config(text=f"[ {MY_STORE_NAME} ]")
+                self.store_label.configure(text=f"[ {MY_STORE_NAME} ]")
                 messagebox.showinfo("완료", "설정이 저장되었습니다.", parent=win)
                 win.destroy()
             else:
                 messagebox.showerror("오류", "설정 저장 실패!\n디스크 용량을 확인해주세요.", parent=win)
 
-        tk.Button(tab1, text="설정 저장", command=_save,
-                  bg="#2980b9", fg="white", font=("맑은 고딕", 11, "bold"),
-                  width=16, height=2).pack(side="bottom", pady=(8, 0))
+        # 저장 버튼 (하단 고정)
+        ctk.CTkButton(tab1, text="설정 저장",
+                       font=ctk.CTkFont("맑은 고딕", 12, "bold"),
+                       fg_color="#e74c3c", hover_color="#c0392b",
+                       height=42, corner_radius=10, command=_save).pack(
+            side="bottom", fill="x", padx=4, pady=(8, 4))
+
+        # 버전 표시 (하단)
+        ctk.CTkLabel(tab1, text=f"런치팝 알리미  v{CURRENT_VERSION}",
+                      font=ctk.CTkFont("맑은 고딕", 9),
+                      text_color="#bdc3c7").pack(side="bottom", pady=(0, 2))
 
         # 매장명
-        tk.Label(tab1, text="매장명", font=("맑은 고딕", 10, "bold")).pack(anchor="w", pady=(0, 3))
-        store_entry = ttk.Combobox(tab1, font=("맑은 고딕", 10), width=32)
+        ctk.CTkLabel(tab1, text="매장명",
+                      font=ctk.CTkFont("맑은 고딕", 11, "bold"),
+                      text_color="#2c3e50").pack(anchor="w", padx=4, pady=(12, 3))
+        store_entry = ctk.CTkComboBox(
+            tab1, font=ctk.CTkFont("맑은 고딕", 11), width=310,
+            border_color="#dce1e7",
+            button_color="#e74c3c", button_hover_color="#c0392b",
+            dropdown_hover_color="#fdecea")
         store_entry.set(MY_STORE_NAME)
-        store_entry.pack(anchor="w")
+        store_entry.pack(anchor="w", padx=4)
 
         def _load_stores_bg():
             try:
                 resp = requests.get(f"{WEB_APP_URL}?action=getStores", timeout=10)
                 if resp.status_code == 200:
                     stores = resp.json()
-                    store_entry.config(values=stores)
+                    win.after(0, lambda: store_entry.configure(values=stores))
             except Exception:
                 pass
         threading.Thread(target=_load_stores_bg, daemon=True).start()
 
-        ttk.Separator(tab1, orient="horizontal").pack(fill="x", pady=8)
+        ctk.CTkFrame(tab1, height=1, fg_color="#e8ecef").pack(fill="x", padx=4, pady=12)
 
         # 프린터
-        tk.Label(tab1, text="프린터 선택", font=("맑은 고딕", 10, "bold")).pack(anchor="w", pady=(0, 3))
+        ctk.CTkLabel(tab1, text="프린터 선택",
+                      font=ctk.CTkFont("맑은 고딕", 11, "bold"),
+                      text_color="#2c3e50").pack(anchor="w", padx=4, pady=(0, 3))
 
         printer_list = ["기본 프린터"]
         try:
@@ -817,39 +882,50 @@ class SmartDashboard:
             pass
         printer_list += [f"COM{i}" for i in range(1, 13)]
 
-        cb = ttk.Combobox(tab1, values=printer_list, state="readonly", font=("맑은 고딕", 10), width=32)
+        cb = ctk.CTkComboBox(
+            tab1, values=printer_list,
+            font=ctk.CTkFont("맑은 고딕", 11), width=310,
+            border_color="#dce1e7",
+            button_color="#e74c3c", button_hover_color="#c0392b")
         cb.set(PRINTER_SETTING)
-        cb.pack(anchor="w")
+        cb.pack(anchor="w", padx=4)
 
         def do_test():
             global PRINTER_SETTING
-            btn_test.config(text="출력 중...", state="disabled")
+            btn_test.configure(text="출력 중...", state="disabled")
             win.update()
             _orig = PRINTER_SETTING
             PRINTER_SETTING = cb.get()   # 저장 전이어도 현재 선택값으로 테스트
             process_test_print()
-            PRINTER_SETTING = _orig      # 테스트 후 복원 (저장은 별도)
-            btn_test.config(text="테스트 출력", state="normal")
+            PRINTER_SETTING = _orig      # 테스트 후 복원
+            btn_test.configure(text="테스트 출력", state="normal")
 
-        btn_test = tk.Button(tab1, text="테스트 출력", command=do_test,
-                              bg="#7f8c8d", fg="white", font=("맑은 고딕", 10), width=16)
-        btn_test.pack(anchor="w", pady=(6, 0))
+        btn_test = ctk.CTkButton(
+            tab1, text="테스트 출력", width=120, height=32,
+            font=ctk.CTkFont("맑은 고딕", 10),
+            fg_color="#7f8c8d", hover_color="#636e72",
+            corner_radius=8, command=do_test)
+        btn_test.pack(anchor="w", padx=4, pady=(8, 0))
 
-        ttk.Separator(tab1, orient="horizontal").pack(fill="x", pady=8)
+        ctk.CTkFrame(tab1, height=1, fg_color="#e8ecef").pack(fill="x", padx=4, pady=12)
 
         # 시스템
-        tk.Label(tab1, text="시스템 설정", font=("맑은 고딕", 10, "bold")).pack(anchor="w", pady=(0, 3))
+        ctk.CTkLabel(tab1, text="시스템 설정",
+                      font=ctk.CTkFont("맑은 고딕", 11, "bold"),
+                      text_color="#2c3e50").pack(anchor="w", padx=4, pady=(0, 6))
         av = tk.BooleanVar(value=CONFIG.get("autostart", True))
-        tk.Checkbutton(tab1, text="윈도우 시작 시 자동실행", variable=av, font=("맑은 고딕", 10)).pack(anchor="w")
+        ctk.CTkCheckBox(
+            tab1, text="윈도우 시작 시 자동실행",
+            variable=av, font=ctk.CTkFont("맑은 고딕", 11),
+            checkmark_color="white", fg_color="#e74c3c",
+            hover_color="#c0392b").pack(anchor="w", padx=4)
 
-        # ── 탭 2: 로그 뷰어 ──
-        tab2 = tk.Frame(nb, padx=6, pady=6)
-        nb.add(tab2, text="  로그  ")
-
+        # ── 탭2: 로그 ──
         log_text = scrolledtext.ScrolledText(
             tab2, font=("Consolas", 8), height=16, state="disabled",
-            bg="#1e272e", fg="#dfe6e9", insertbackground="white")
-        log_text.pack(fill="both", expand=True)
+            bg="#1e272e", fg="#dfe6e9", insertbackground="white",
+            relief="flat", bd=0)
+        log_text.pack(fill="both", expand=True, padx=4, pady=(8, 4))
 
         def load_log():
             log_text.config(state="normal")
@@ -868,8 +944,11 @@ class SmartDashboard:
             log_text.config(state="disabled")
 
         load_log()
-        tk.Button(tab2, text="새로고침", command=load_log,
-                  bg="#27ae60", fg="white", font=("맑은 고딕", 10)).pack(pady=4)
+        ctk.CTkButton(
+            tab2, text="새로고침", command=load_log,
+            font=ctk.CTkFont("맑은 고딕", 10),
+            fg_color="#27ae60", hover_color="#1e8449",
+            height=32, corner_radius=8).pack(pady=4)
 
         _center_window(win)
 
@@ -877,42 +956,46 @@ class SmartDashboard:
         if self.list_win and self.list_win.winfo_exists():
             self.list_win.destroy()
             self.list_win = None
-            self.btn_list.config(text="주문리스트 ▼")
+            self.scroll_frame = None
+            self.btn_list.configure(text="주문리스트 ▼")
         else:
             self.show_list()
-            self.btn_list.config(text="주문리스트 ▲")
+            self.btn_list.configure(text="주문리스트 ▲")
 
     def show_list(self):
-        h = 390
+        h = 400
         x, y = self.root.winfo_x(), self.root.winfo_y()
-        ny = y - h if y + h > self.root.winfo_screenheight() else y + self.base_h
+        ny = y - h if y + h + self.base_h > self.root.winfo_screenheight() else y + self.base_h
 
-        self.list_win = tk.Toplevel(self.root)
+        self.list_win = ctk.CTkToplevel(self.root)
         self.list_win.overrideredirect(True)
         self.list_win.attributes("-topmost", True)
         self.list_win.geometry(f"{self.base_w}x{h}+{x}+{ny}")
-        self.list_win.configure(bg="#f0f3f4")
+        self.list_win.configure(fg_color="#f4f6f7")
 
         # 헤더
-        hdr = tk.Frame(self.list_win, bg="#2c3e50", pady=7)
+        hdr = ctk.CTkFrame(self.list_win, fg_color="#1a1a2e", corner_radius=0, height=44)
         hdr.pack(fill="x")
-        tk.Label(hdr, text=f"오늘의 주문 현황  [ {MY_STORE_NAME} ]",
-                 fg="white", bg="#2c3e50", font=("맑은 고딕", 11, "bold")).pack(side="left", padx=12)
-        tk.Button(hdr, text="✕",
-                  command=lambda: (self.list_win.destroy(),
-                                   setattr(self, 'list_win', None),
-                                   self.btn_list.config(text="주문리스트 ▼")),
-                  bg="#2c3e50", fg="white", relief="flat", font=("Arial", 12)).pack(side="right", padx=6)
+        hdr.pack_propagate(False)
+        ctk.CTkLabel(hdr, text=f"오늘의 주문 현황  [ {MY_STORE_NAME} ]",
+                      font=ctk.CTkFont("맑은 고딕", 11, "bold"),
+                      text_color="white").pack(side="left", padx=14)
+
+        def _close_list():
+            self.list_win.destroy()
+            self.list_win = None
+            self.scroll_frame = None
+            self.btn_list.configure(text="주문리스트 ▼")
+
+        ctk.CTkButton(hdr, text="✕", width=32, height=28,
+                       fg_color="transparent", hover_color="#e74c3c",
+                       font=ctk.CTkFont("Arial", 12), corner_radius=6,
+                       command=_close_list).pack(side="right", padx=8, pady=7)
 
         # 스크롤 영역
-        canvas = tk.Canvas(self.list_win, bg="#f0f3f4", highlightthickness=0)
-        sb = ttk.Scrollbar(self.list_win, orient="vertical", command=canvas.yview)
-        self.list_frame = tk.Frame(canvas, bg="#f0f3f4")
-        self.list_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=self.list_frame, anchor="nw")
-        canvas.configure(yscrollcommand=sb.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        sb.pack(side="right", fill="y")
+        self.scroll_frame = ctk.CTkScrollableFrame(
+            self.list_win, fg_color="#f4f6f7", corner_radius=0)
+        self.scroll_frame.pack(fill="both", expand=True, padx=8, pady=8)
 
         self._render_order_list()
         self._schedule_list_refresh()
@@ -920,45 +1003,59 @@ class SmartDashboard:
     def _render_order_list(self):
         if not (self.list_win and self.list_win.winfo_exists()):
             return
-        for w in self.list_frame.winfo_children():
+        if self.scroll_frame is None:
+            return
+
+        for w in self.scroll_frame.winfo_children():
             w.destroy()
 
         with orders_lock:
             orders_snapshot = list(reversed(GLOBAL_ORDERS))
 
         if not orders_snapshot:
-            tk.Label(self.list_frame, text="오늘 주문이 없습니다.",
-                     bg="#f0f3f4", font=("맑은 고딕", 11), fg="#7f8c8d").pack(pady=30)
+            ctk.CTkLabel(self.scroll_frame, text="오늘 주문이 없습니다.",
+                          font=ctk.CTkFont("맑은 고딕", 11),
+                          text_color="#7f8c8d").pack(pady=30)
             return
 
         for o in orders_snapshot:
             is_printed = o.get('isPrinted', False)
             is_fail = o.get('isQueued') and not is_printed
 
-            row_bg = "#fadbd8" if is_fail else ("#eafaf1" if is_printed else "white")
+            if is_fail:
+                row_color, icon, icon_color = "#fdecea", "✕", "#e74c3c"
+            elif is_printed:
+                row_color, icon, icon_color = "#eafaf1", "✓", "#27ae60"
+            else:
+                row_color, icon, icon_color = "white", "●", "#3498db"
 
-            r = tk.Frame(self.list_frame, bg=row_bg, pady=8)
-            r.pack(fill="x", padx=8, pady=2)
+            r = ctk.CTkFrame(self.scroll_frame, fg_color=row_color,
+                               corner_radius=10, height=62)
+            r.pack(fill="x", pady=3)
+            r.pack_propagate(False)
 
-            # 상태 아이콘
-            tk.Label(r, text="✓" if is_printed else ("!" if is_fail else "●"),
-                     fg=("#27ae60" if is_printed else "#e74c3c"),
-                     bg=row_bg, font=("Arial", 12, "bold"), width=2).pack(side="left", padx=5)
+            ctk.CTkLabel(r, text=icon,
+                          font=ctk.CTkFont("Arial", 14, "bold"),
+                          text_color=icon_color, width=32).pack(side="left", padx=10)
 
-            # 정보
-            info = tk.Frame(r, bg=row_bg)
-            info.pack(side="left", fill="x", expand=True)
-            tk.Label(info, text=f"[{o.get('orderNo', '')[-4:]}] {o.get('customerName', '')}",
-                     bg=row_bg, font=("맑은 고딕", 10, "bold")).pack(anchor="w")
-            tk.Label(info,
-                     text=f"{o.get('menuName', '')[:20]}  |  {o.get('deliveryTime', '')}",
-                     bg=row_bg, font=("맑은 고딕", 9), fg="#555").pack(anchor="w")
+            info = ctk.CTkFrame(r, fg_color="transparent")
+            info.pack(side="left", fill="both", expand=True, pady=6)
+            ctk.CTkLabel(info,
+                          text=f"[{o.get('orderNo', '')[-4:]}] {o.get('customerName', '')}",
+                          font=ctk.CTkFont("맑은 고딕", 10, "bold"),
+                          text_color="#2c3e50").pack(anchor="w")
+            ctk.CTkLabel(info,
+                          text=f"{o.get('menuName', '')[:20]}  |  {o.get('deliveryTime', '')}",
+                          font=ctk.CTkFont("맑은 고딕", 9),
+                          text_color="#7f8c8d").pack(anchor="w")
 
-            # 재출력 버튼
-            btn = tk.Button(r, text="재출력", bg="#bdc3c7", fg="white",
-                             font=("맑은 고딕", 9), padx=8, relief="flat")
-            btn.pack(side="right", padx=8)
-            btn.config(command=self._make_reprint_cmd(o, btn))
+            btn_color = "#e74c3c" if is_fail else "#bdc3c7"
+            btn = ctk.CTkButton(r, text="재출력", width=70, height=30,
+                                  font=ctk.CTkFont("맑은 고딕", 9),
+                                  fg_color=btn_color, hover_color="#c0392b",
+                                  corner_radius=8)
+            btn.pack(side="right", padx=10)
+            btn.configure(command=self._make_reprint_cmd(o, btn))
 
     @staticmethod
     def _make_reprint_cmd(order, button):
@@ -967,7 +1064,7 @@ class SmartDashboard:
             if ono in reprint_in_progress:
                 return
             reprint_in_progress.add(ono)
-            button.config(text="출력 중...", state="disabled", bg="#95a5a6")
+            button.configure(text="출력 중...", state="disabled", fg_color="#95a5a6")
 
             def do():
                 try:
@@ -975,12 +1072,11 @@ class SmartDashboard:
                 finally:
                     reprint_in_progress.discard(ono)
                     try:
-                        button.config(text="재출력", state="normal", bg="#bdc3c7")
+                        button.configure(text="재출력", state="normal", fg_color="#bdc3c7")
                     except Exception:
                         pass
 
             threading.Thread(target=do, daemon=True).start()
-
         return cmd
 
     def _schedule_list_refresh(self):
@@ -997,7 +1093,6 @@ if __name__ == '__main__':
     import ctypes
     _mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "LunchPopMaster_SingleInstance")
     if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
-        # 이미 실행 중 — 업데이트 BAT 재시작 시 잠깐 겹칠 수 있으므로 2초 대기 후 재확인
         import time as _t; _t.sleep(2)
         _mutex2 = ctypes.windll.kernel32.CreateMutexW(None, False, "LunchPopMaster_SingleInstance")
         if ctypes.windll.kernel32.GetLastError() == 183:

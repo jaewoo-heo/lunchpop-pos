@@ -24,7 +24,7 @@ jobs:
           python-version: '3.11'
 
       - name: 의존성 설치
-        run: pip install pyinstaller requests pywin32 pystray Pillow pyserial
+        run: pip install pyinstaller requests pywin32 pystray Pillow pyserial customtkinter
 
       # PowerShell의 세미콜론 파싱 오류 방지를 위해 cmd로 빌드
       - name: exe 빌드
