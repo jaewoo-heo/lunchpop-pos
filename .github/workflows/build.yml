@@ -1,0 +1,55 @@
+name: Build & Release
+
+# v 태그 push 시 자동 실행 (예: git tag v3.3 && git push origin v3.3)
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Release 생성에 필요한 쓰기 권한 (필수)
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 의존성 설치
+        run: pip install pyinstaller requests pywin32 pystray Pillow pyserial
+
+      # PowerShell의 세미콜론 파싱 오류 방지를 위해 cmd로 빌드
+      - name: exe 빌드
+        shell: cmd
+        run: >
+          python -m PyInstaller
+          --onefile --noconsole
+          --name "LunchPop_Master"
+          --icon "assets/logo.ico"
+          --add-data "assets/alarm.wav;."
+          --add-data "assets/logo.ico;."
+          lunchpop_master.py
+
+      - name: GitHub Release 생성 및 exe 업로드
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "런치팝 알리미 ${{ github.ref_name }}"
+          body: |
+            ## 변경사항
+            - 업데이트 내용을 여기에 작성하세요.
+
+            ## 설치 / 업데이트
+            `LunchPop_Master.exe` 다운로드 후 실행
+            (기존 설치자는 프로그램이 자동 업데이트됩니다)
+          files: dist/LunchPop_Master.exe
+          make_latest: true
+          # ⚠️ 저장소가 Private이면 아래 주석 해제
+          # prerelease: false

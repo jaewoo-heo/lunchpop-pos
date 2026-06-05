@@ -1,0 +1,15 @@
+﻿# PyInstaller 빌드 산출물
+dist/
+build/
+*.spec
+
+# 입점자 PC에서 생성되는 로컬 파일
+lunchpop_config.json
+system_debug.log
+system_debug.old.log
+updater.bat
+update_new.exe
+
+# Python 캐시
+__pycache__/
+*.pyc
