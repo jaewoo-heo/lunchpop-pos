@@ -989,6 +989,22 @@ class SmartDashboard:
 # [5] 엔트리 포인트
 # ==========================================
 if __name__ == '__main__':
+    # ── 중복 실행 방지 (업데이트 재시작 시에도 안전하게 처리) ──
+    import ctypes
+    _mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "LunchPopMaster_SingleInstance")
+    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        # 이미 실행 중 — 업데이트 BAT 재시작 시 잠깐 겹칠 수 있으므로 2초 대기 후 재확인
+        import time as _t; _t.sleep(2)
+        _mutex2 = ctypes.windll.kernel32.CreateMutexW(None, False, "LunchPopMaster_SingleInstance")
+        if ctypes.windll.kernel32.GetLastError() == 183:
+            try:
+                root_tmp = tk.Tk(); root_tmp.withdraw()
+                messagebox.showwarning("런치팝 알리미", "프로그램이 이미 실행 중입니다.")
+                root_tmp.destroy()
+            except Exception:
+                pass
+            sys.exit(0)
+
     write_local_log(f"--- Application Started (v{CURRENT_VERSION}) ---")
 
     if not CONFIG.get("storeName"):
