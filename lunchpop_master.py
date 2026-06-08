@@ -803,9 +803,11 @@ class SmartDashboard:
         nx = self.root.winfo_x() + (e.x - self._x)
         ny = self.root.winfo_y() + (e.y - self._y)
         self.root.geometry(f"+{nx}+{ny}")
-        # 리스트 창이 열려 있으면 대시보드에 붙어서 같이 이동
+        # 리스트 창이 열려 있으면 대시보드에 붙어서 같이 이동 (위/아래 실시간 재계산)
         if self.list_win and self.list_win.winfo_exists():
             lh = self.list_win.winfo_height()
+            sh = self.root.winfo_screenheight()
+            self._list_above = (ny + self.base_h + lh > sh)
             ly = ny - lh if self._list_above else ny + self.base_h
             self.list_win.geometry(f"+{nx}+{ly}")
 
