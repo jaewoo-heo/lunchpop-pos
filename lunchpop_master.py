@@ -1062,11 +1062,15 @@ class SmartDashboard:
         x, y = self.root.winfo_x(), self.root.winfo_y()
         ny = y - h if y + h + self.base_h > self.root.winfo_screenheight() else y + self.base_h
 
-        self.list_win = ctk.CTkToplevel(self.root)
+        # tk.Toplevel 사용 — CTkToplevel은 생성 시 부모 창을 Z뒤로 밀어냄
+        self.list_win = tk.Toplevel(self.root)
         self.list_win.overrideredirect(True)
         self.list_win.attributes("-topmost", True)
         self.list_win.geometry(f"{self.base_w}x{h}+{x}+{ny}")
-        self.list_win.configure(fg_color="#f4f6f7")
+        self.list_win.configure(bg="#f4f6f7")
+
+        # 대시보드를 리스트 창보다 앞으로 유지
+        self.root.after(80, lambda: self.root.lift())
 
         # 헤더
         hdr = ctk.CTkFrame(self.list_win, fg_color="#1a1a2e", corner_radius=0, height=44)
