@@ -318,7 +318,8 @@ def select_store_ui():
         else:
             confirm_btn.configure(state="disabled", fg_color="#bdc3c7", hover_color="#95a5a6")
 
-    store_combo.configure(command=lambda v: on_store_change())
+    store_combo.bind("<<ComboboxSelected>>", on_store_change)
+    store_combo.bind("<KeyRelease>", on_store_change)
 
     def load_stores():
         try:
@@ -326,7 +327,7 @@ def select_store_ui():
             if resp.status_code == 200:
                 stores = resp.json()
                 def _apply_stores():
-                    store_combo.configure(values=stores)
+                    store_combo["values"] = stores
                     if stores:
                         store_combo.set(stores[0])
                     on_store_change()
@@ -336,7 +337,7 @@ def select_store_ui():
             write_local_log(f"[ERR] 매장 목록 로드 실패: {e}")
         fallback = ["덮밥천재", "직접입력"]
         def _apply_fallback():
-            store_combo.configure(values=fallback)
+            store_combo["values"] = fallback
             store_combo.set(fallback[0])
             on_store_change()
         root.after(0, _apply_fallback)
@@ -945,7 +946,9 @@ class SmartDashboard:
                 resp = requests.get(f"{WEB_APP_URL}?action=getStores", timeout=10)
                 if resp.status_code == 200:
                     stores = resp.json()
-                    win.after(0, lambda: store_entry.configure(values=stores))
+                    def _apply():
+                        store_entry["values"] = stores
+                    win.after(0, _apply)
             except Exception:
                 pass
         threading.Thread(target=_load_stores_bg, daemon=True).start()
