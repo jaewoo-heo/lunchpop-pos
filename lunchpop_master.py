@@ -802,29 +802,77 @@ class SmartDashboard:
         win.attributes("-topmost", True)
         win.grab_set()
         win.resizable(False, False)
-        win.configure(fg_color="#f4f6f7")
+        win.configure(fg_color="white")
         _set_icon(win)
 
-        # 창 크기 고정 후 중앙 배치
-        W, H = 370, 500
+        W, H = 370, 530
         win.update_idletasks()
         sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
         win.geometry(f"{W}x{H}+{(sw - W) // 2}+{(sh - H) // 3}")
 
-        tabview = ctk.CTkTabview(
-            win, fg_color="white",
-            segmented_button_fg_color="#ecf0f1",
-            segmented_button_selected_color="#e74c3c",
-            segmented_button_selected_hover_color="#c0392b",
-            segmented_button_unselected_color="#ecf0f1",
-            segmented_button_unselected_hover_color="#dde1e2",
-            text_color="#2c3e50")
-        tabview.pack(fill="both", expand=True, padx=12, pady=12)
+        # ── 헤더 ──
+        header = ctk.CTkFrame(win, fg_color="#e74c3c", corner_radius=0, height=58)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+        ctk.CTkLabel(header, text="런치팝 설정",
+                      font=ctk.CTkFont("맑은 고딕", 16, "bold"),
+                      text_color="white").pack(side="left", padx=20, pady=16)
+        ctk.CTkLabel(header, text=f"v{CURRENT_VERSION}",
+                      font=ctk.CTkFont("맑은 고딕", 10),
+                      text_color="#fadbd8").pack(side="right", padx=16, pady=20)
 
-        tab1 = tabview.add("  설정  ")
-        tab2 = tabview.add("  로그  ")
+        # ── 커스텀 탭바 ──
+        tab_bar = ctk.CTkFrame(win, fg_color="#f5f5f5", corner_radius=0, height=40)
+        tab_bar.pack(fill="x")
+        tab_bar.pack_propagate(False)
 
-        # ── 탭1: 설정 (위→아래 순서대로 pack) ──
+        # 콘텐츠 영역 (탭 전환용 프레임)
+        content_area = ctk.CTkFrame(win, fg_color="white", corner_radius=0)
+        content_area.pack(fill="both", expand=True)
+
+        frame_settings = ctk.CTkFrame(content_area, fg_color="white", corner_radius=0)
+        frame_log      = ctk.CTkFrame(content_area, fg_color="white", corner_radius=0)
+
+        def show_tab(name):
+            if name == "settings":
+                frame_settings.pack(fill="both", expand=True)
+                frame_log.pack_forget()
+                btn_tab_settings.configure(fg_color="white", text_color="#e74c3c",
+                                            border_width=0, border_color="#e74c3c")
+                btn_tab_log.configure(fg_color="#f5f5f5", text_color="#7f8c8d",
+                                       border_width=0)
+            else:
+                frame_log.pack(fill="both", expand=True)
+                frame_settings.pack_forget()
+                btn_tab_log.configure(fg_color="white", text_color="#e74c3c",
+                                       border_width=0)
+                btn_tab_settings.configure(fg_color="#f5f5f5", text_color="#7f8c8d",
+                                            border_width=0)
+                load_log()
+
+        btn_tab_settings = ctk.CTkButton(
+            tab_bar, text="설정", width=80, height=40,
+            font=ctk.CTkFont("맑은 고딕", 11, "bold"),
+            fg_color="white", text_color="#e74c3c",
+            hover_color="#fef0ef", corner_radius=0,
+            command=lambda: show_tab("settings"))
+        btn_tab_settings.pack(side="left")
+
+        # 탭 하단 강조선 (설정)
+        ctk.CTkFrame(tab_bar, width=2, fg_color="#e8e8e8").pack(side="left", fill="y", pady=8)
+
+        btn_tab_log = ctk.CTkButton(
+            tab_bar, text="로그", width=80, height=40,
+            font=ctk.CTkFont("맑은 고딕", 11),
+            fg_color="#f5f5f5", text_color="#7f8c8d",
+            hover_color="#ebebeb", corner_radius=0,
+            command=lambda: show_tab("log"))
+        btn_tab_log.pack(side="left")
+
+        # 탭바 하단 구분선
+        ctk.CTkFrame(win, fg_color="#e8e8e8", height=1, corner_radius=0).pack(fill="x")
+
+        # ── 탭1: 설정 콘텐츠 ──
         def _save():
             global PRINTER_SETTING, MY_STORE_NAME
             new_store = store_entry.get().strip()
@@ -844,17 +892,22 @@ class SmartDashboard:
             else:
                 messagebox.showerror("오류", "설정 저장 실패!\n디스크 용량을 확인해주세요.", parent=win)
 
+        scroll_s = ctk.CTkScrollableFrame(frame_settings, fg_color="white", corner_radius=0)
+        scroll_s.pack(fill="both", expand=True, padx=0, pady=0)
+
+        PAD = 20  # 좌우 여백
+
         # 매장명
-        ctk.CTkLabel(tab1, text="매장명",
+        ctk.CTkLabel(scroll_s, text="매장명",
                       font=ctk.CTkFont("맑은 고딕", 11, "bold"),
-                      text_color="#2c3e50").pack(anchor="w", padx=4, pady=(10, 3))
+                      text_color="#2c3e50").pack(anchor="w", padx=PAD, pady=(16, 4))
         store_entry = ctk.CTkComboBox(
-            tab1, font=ctk.CTkFont("맑은 고딕", 11), width=318,
+            scroll_s, font=ctk.CTkFont("맑은 고딕", 11), width=310,
             border_color="#dce1e7",
             button_color="#e74c3c", button_hover_color="#c0392b",
             dropdown_hover_color="#fdecea")
         store_entry.set(MY_STORE_NAME)
-        store_entry.pack(anchor="w", padx=4)
+        store_entry.pack(anchor="w", padx=PAD)
 
         def _load_stores_bg():
             try:
@@ -866,12 +919,12 @@ class SmartDashboard:
                 pass
         threading.Thread(target=_load_stores_bg, daemon=True).start()
 
-        ctk.CTkFrame(tab1, height=1, fg_color="#e8ecef").pack(fill="x", padx=4, pady=10)
+        ctk.CTkFrame(scroll_s, height=1, fg_color="#f0f0f0").pack(fill="x", padx=PAD, pady=14)
 
         # 프린터
-        ctk.CTkLabel(tab1, text="프린터 선택",
+        ctk.CTkLabel(scroll_s, text="프린터 선택",
                       font=ctk.CTkFont("맑은 고딕", 11, "bold"),
-                      text_color="#2c3e50").pack(anchor="w", padx=4, pady=(0, 3))
+                      text_color="#2c3e50").pack(anchor="w", padx=PAD, pady=(0, 4))
 
         printer_list = ["기본 프린터"]
         try:
@@ -883,12 +936,12 @@ class SmartDashboard:
         printer_list += [f"COM{i}" for i in range(1, 13)]
 
         cb = ctk.CTkComboBox(
-            tab1, values=printer_list,
-            font=ctk.CTkFont("맑은 고딕", 11), width=318,
+            scroll_s, values=printer_list,
+            font=ctk.CTkFont("맑은 고딕", 11), width=310,
             border_color="#dce1e7",
             button_color="#e74c3c", button_hover_color="#c0392b")
         cb.set(PRINTER_SETTING)
-        cb.pack(anchor="w", padx=4)
+        cb.pack(anchor="w", padx=PAD)
 
         def do_test():
             global PRINTER_SETTING
@@ -901,44 +954,39 @@ class SmartDashboard:
             btn_test.configure(text="테스트 출력", state="normal")
 
         btn_test = ctk.CTkButton(
-            tab1, text="테스트 출력", width=120, height=30,
+            scroll_s, text="테스트 출력", width=110, height=30,
             font=ctk.CTkFont("맑은 고딕", 10),
-            fg_color="#7f8c8d", hover_color="#636e72",
+            fg_color="#95a5a6", hover_color="#7f8c8d",
             corner_radius=8, command=do_test)
-        btn_test.pack(anchor="w", padx=4, pady=(8, 0))
+        btn_test.pack(anchor="w", padx=PAD, pady=(10, 0))
 
-        ctk.CTkFrame(tab1, height=1, fg_color="#e8ecef").pack(fill="x", padx=4, pady=10)
+        ctk.CTkFrame(scroll_s, height=1, fg_color="#f0f0f0").pack(fill="x", padx=PAD, pady=14)
 
         # 시스템
-        ctk.CTkLabel(tab1, text="시스템 설정",
+        ctk.CTkLabel(scroll_s, text="시스템 설정",
                       font=ctk.CTkFont("맑은 고딕", 11, "bold"),
-                      text_color="#2c3e50").pack(anchor="w", padx=4, pady=(0, 6))
+                      text_color="#2c3e50").pack(anchor="w", padx=PAD, pady=(0, 8))
         av = tk.BooleanVar(value=CONFIG.get("autostart", True))
         ctk.CTkCheckBox(
-            tab1, text="윈도우 시작 시 자동실행",
+            scroll_s, text="윈도우 시작 시 자동실행",
             variable=av, font=ctk.CTkFont("맑은 고딕", 11),
             checkmark_color="white", fg_color="#e74c3c",
-            hover_color="#c0392b").pack(anchor="w", padx=4)
+            hover_color="#c0392b").pack(anchor="w", padx=PAD)
 
-        ctk.CTkFrame(tab1, height=1, fg_color="#e8ecef").pack(fill="x", padx=4, pady=10)
-
-        # 저장 버튼 (콘텐츠 마지막에 순서대로 배치)
-        ctk.CTkButton(tab1, text="설정 저장",
+        # 저장 버튼 (스크롤 영역 밖 - 항상 하단 고정)
+        bottom = ctk.CTkFrame(frame_settings, fg_color="white", corner_radius=0)
+        bottom.pack(fill="x", padx=PAD, pady=12)
+        ctk.CTkButton(bottom, text="설정 저장",
                        font=ctk.CTkFont("맑은 고딕", 12, "bold"),
                        fg_color="#e74c3c", hover_color="#c0392b",
-                       height=42, corner_radius=10, command=_save).pack(
-            fill="x", padx=4, pady=(0, 4))
+                       height=44, corner_radius=10, command=_save).pack(fill="x")
 
-        ctk.CTkLabel(tab1, text=f"런치팝 알리미  v{CURRENT_VERSION}",
-                      font=ctk.CTkFont("맑은 고딕", 9),
-                      text_color="#bdc3c7").pack(pady=(0, 4))
-
-        # ── 탭2: 로그 ──
+        # ── 탭2: 로그 콘텐츠 ──
         log_text = scrolledtext.ScrolledText(
-            tab2, font=("Consolas", 8), height=16, state="disabled",
+            frame_log, font=("Consolas", 8), state="disabled",
             bg="#1e272e", fg="#dfe6e9", insertbackground="white",
             relief="flat", bd=0)
-        log_text.pack(fill="both", expand=True, padx=4, pady=(8, 4))
+        log_text.pack(fill="both", expand=True, padx=0, pady=0)
 
         def load_log():
             log_text.config(state="normal")
@@ -956,12 +1004,16 @@ class SmartDashboard:
                 log_text.insert("end", f"로그 로드 실패: {e}")
             log_text.config(state="disabled")
 
-        load_log()
+        log_btn_bar = ctk.CTkFrame(frame_log, fg_color="white", corner_radius=0)
+        log_btn_bar.pack(fill="x", padx=16, pady=8)
         ctk.CTkButton(
-            tab2, text="새로고침", command=load_log,
+            log_btn_bar, text="새로고침", command=load_log,
             font=ctk.CTkFont("맑은 고딕", 10),
             fg_color="#27ae60", hover_color="#1e8449",
-            height=32, corner_radius=8).pack(pady=4)
+            height=32, corner_radius=8).pack(anchor="e")
+
+        # 기본 탭: 설정
+        show_tab("settings")
 
     def toggle_list(self):
         if self.list_win and self.list_win.winfo_exists():
