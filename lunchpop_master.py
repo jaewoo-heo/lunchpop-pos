@@ -666,6 +666,7 @@ class SmartDashboard:
         self._has_error = False
         self.list_win = None
         self.scroll_frame = None
+        self._list_above = False  # 리스트가 대시보드 위에 붙어있는지 여부
 
         # 위치 복원 (화면 밖이면 기본 위치로)
         sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
@@ -802,6 +803,11 @@ class SmartDashboard:
         nx = self.root.winfo_x() + (e.x - self._x)
         ny = self.root.winfo_y() + (e.y - self._y)
         self.root.geometry(f"+{nx}+{ny}")
+        # 리스트 창이 열려 있으면 대시보드에 붙어서 같이 이동
+        if self.list_win and self.list_win.winfo_exists():
+            lh = self.list_win.winfo_height()
+            ly = ny - lh if self._list_above else ny + self.base_h
+            self.list_win.geometry(f"+{nx}+{ly}")
 
     def save_pos(self, _e):
         CONFIG["dash_x"] = self.root.winfo_x()
@@ -1060,7 +1066,8 @@ class SmartDashboard:
     def show_list(self):
         h = 400
         x, y = self.root.winfo_x(), self.root.winfo_y()
-        ny = y - h if y + h + self.base_h > self.root.winfo_screenheight() else y + self.base_h
+        self._list_above = (y + h + self.base_h > self.root.winfo_screenheight())
+        ny = y - h if self._list_above else y + self.base_h
 
         # tk.Toplevel 사용 — CTkToplevel은 생성 시 부모 창을 Z뒤로 밀어냄
         self.list_win = tk.Toplevel(self.root)
