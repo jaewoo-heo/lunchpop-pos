@@ -222,7 +222,7 @@ def select_store_ui():
         foreground="#2c3e50", selectbackground="#fdecea",
         selectforeground="#2c3e50", arrowcolor="white",
         bordercolor="#dce1e7", lightcolor="#dce1e7", darkcolor="#dce1e7",
-        padding=(10, 7), font=("맑은 고딕", 11))
+        arrowsize=20, padding=(12, 10), font=("맑은 고딕", 11))
     _style.map("LP.TCombobox",
         background=[("active", "#c0392b"), ("!active", "#e74c3c")],
         fieldbackground=[("readonly", "white")],
@@ -268,7 +268,7 @@ def select_store_ui():
 
     store_combo = ttk.Combobox(card, style="LP.TCombobox",
                                 font=("맑은 고딕", 11), width=32, state="normal")
-    store_combo.pack(padx=20, pady=(8, 0), ipady=2, anchor="w")
+    store_combo.pack(padx=20, pady=(8, 0), anchor="w")
     store_combo.set("로딩 중...")
 
     ctk.CTkFrame(card, height=1, fg_color="#f0f0f0").pack(fill="x", padx=20, pady=16)
@@ -293,7 +293,7 @@ def select_store_ui():
     printer_combo = ttk.Combobox(card, style="LP.TCombobox",
                                   font=("맑은 고딕", 11), width=32,
                                   values=printer_list, state="readonly")
-    printer_combo.pack(padx=20, pady=(8, 0), ipady=2, anchor="w")
+    printer_combo.pack(padx=20, pady=(8, 0), anchor="w")
     printer_combo.set(CONFIG.get("printer", "기본 프린터"))
 
     ctk.CTkFrame(card, height=1, fg_color="#f0f0f0").pack(fill="x", padx=20, pady=16)
@@ -834,7 +834,7 @@ class SmartDashboard:
             foreground="#2c3e50", selectbackground="#fdecea",
             selectforeground="#2c3e50", arrowcolor="white",
             bordercolor="#dce1e7", lightcolor="#dce1e7", darkcolor="#dce1e7",
-            padding=(10, 7), font=("맑은 고딕", 11))
+            arrowsize=20, padding=(12, 10), font=("맑은 고딕", 11))
         _style.map("LP.TCombobox",
             background=[("active", "#c0392b"), ("!active", "#e74c3c")],
             fieldbackground=[("readonly", "white")],
@@ -938,7 +938,7 @@ class SmartDashboard:
                       text_color="#2c3e50").pack(anchor="w", padx=PAD, pady=(16, 4))
         store_entry = ttk.Combobox(scroll_s, style="LP.TCombobox",
                                     font=("맑은 고딕", 11), width=28, state="normal")
-        store_entry.pack(anchor="w", padx=PAD, ipady=2)
+        store_entry.pack(anchor="w", padx=PAD)
         store_entry.set(MY_STORE_NAME)
 
         def _load_stores_bg():
@@ -972,7 +972,7 @@ class SmartDashboard:
         cb = ttk.Combobox(scroll_s, style="LP.TCombobox",
                            font=("맑은 고딕", 11), width=28,
                            values=printer_list, state="readonly")
-        cb.pack(anchor="w", padx=PAD, ipady=2)
+        cb.pack(anchor="w", padx=PAD)
         cb.set(PRINTER_SETTING)
 
         def do_test():
