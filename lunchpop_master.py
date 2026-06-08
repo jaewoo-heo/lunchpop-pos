@@ -182,9 +182,14 @@ CONFIG = load_config()
 # [1] 초기 설정 마법사 UI
 # ==========================================
 def _set_icon(window):
-    """모든 창에 로고 아이콘 적용"""
+    """모든 창에 로고 아이콘 적용 (CTk는 초기화 후 덮어쓰므로 200ms 지연)"""
+    def _apply():
+        try:
+            window.iconbitmap(resource_path("logo.ico"))
+        except Exception:
+            pass
     try:
-        window.iconbitmap(resource_path("logo.ico"))
+        window.after(200, _apply)
     except Exception:
         pass
 
@@ -305,20 +310,21 @@ def select_store_ui():
             resp = requests.get(f"{WEB_APP_URL}?action=getStores", timeout=10)
             if resp.status_code == 200:
                 stores = resp.json()
-                root.after(0, lambda: (
-                    store_combo.configure(values=stores),
-                    store_combo.set(stores[0]) if stores else None,
+                def _apply_stores():
+                    store_combo.configure(values=stores)
+                    if stores:
+                        store_combo.set(stores[0])
                     on_store_change()
-                ))
+                root.after(0, _apply_stores)
                 return
         except Exception as e:
             write_local_log(f"[ERR] 매장 목록 로드 실패: {e}")
         fallback = ["덮밥천재", "직접입력"]
-        root.after(0, lambda: (
-            store_combo.configure(values=fallback),
-            store_combo.set(fallback[0]),
+        def _apply_fallback():
+            store_combo.configure(values=fallback)
+            store_combo.set(fallback[0])
             on_store_change()
-        ))
+        root.after(0, _apply_fallback)
 
     threading.Thread(target=load_stores, daemon=True).start()
 
@@ -799,6 +805,12 @@ class SmartDashboard:
         win.configure(fg_color="#f4f6f7")
         _set_icon(win)
 
+        # 창 크기 고정 후 중앙 배치
+        W, H = 370, 500
+        win.update_idletasks()
+        sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+        win.geometry(f"{W}x{H}+{(sw - W) // 2}+{(sh - H) // 3}")
+
         tabview = ctk.CTkTabview(
             win, fg_color="white",
             segmented_button_fg_color="#ecf0f1",
@@ -812,7 +824,7 @@ class SmartDashboard:
         tab1 = tabview.add("  설정  ")
         tab2 = tabview.add("  로그  ")
 
-        # ── 탭1: 설정 ──
+        # ── 탭1: 설정 (위→아래 순서대로 pack) ──
         def _save():
             global PRINTER_SETTING, MY_STORE_NAME
             new_store = store_entry.get().strip()
@@ -832,24 +844,12 @@ class SmartDashboard:
             else:
                 messagebox.showerror("오류", "설정 저장 실패!\n디스크 용량을 확인해주세요.", parent=win)
 
-        # 저장 버튼 (하단 고정)
-        ctk.CTkButton(tab1, text="설정 저장",
-                       font=ctk.CTkFont("맑은 고딕", 12, "bold"),
-                       fg_color="#e74c3c", hover_color="#c0392b",
-                       height=42, corner_radius=10, command=_save).pack(
-            side="bottom", fill="x", padx=4, pady=(8, 4))
-
-        # 버전 표시 (하단)
-        ctk.CTkLabel(tab1, text=f"런치팝 알리미  v{CURRENT_VERSION}",
-                      font=ctk.CTkFont("맑은 고딕", 9),
-                      text_color="#bdc3c7").pack(side="bottom", pady=(0, 2))
-
         # 매장명
         ctk.CTkLabel(tab1, text="매장명",
                       font=ctk.CTkFont("맑은 고딕", 11, "bold"),
-                      text_color="#2c3e50").pack(anchor="w", padx=4, pady=(12, 3))
+                      text_color="#2c3e50").pack(anchor="w", padx=4, pady=(10, 3))
         store_entry = ctk.CTkComboBox(
-            tab1, font=ctk.CTkFont("맑은 고딕", 11), width=310,
+            tab1, font=ctk.CTkFont("맑은 고딕", 11), width=318,
             border_color="#dce1e7",
             button_color="#e74c3c", button_hover_color="#c0392b",
             dropdown_hover_color="#fdecea")
@@ -866,7 +866,7 @@ class SmartDashboard:
                 pass
         threading.Thread(target=_load_stores_bg, daemon=True).start()
 
-        ctk.CTkFrame(tab1, height=1, fg_color="#e8ecef").pack(fill="x", padx=4, pady=12)
+        ctk.CTkFrame(tab1, height=1, fg_color="#e8ecef").pack(fill="x", padx=4, pady=10)
 
         # 프린터
         ctk.CTkLabel(tab1, text="프린터 선택",
@@ -884,7 +884,7 @@ class SmartDashboard:
 
         cb = ctk.CTkComboBox(
             tab1, values=printer_list,
-            font=ctk.CTkFont("맑은 고딕", 11), width=310,
+            font=ctk.CTkFont("맑은 고딕", 11), width=318,
             border_color="#dce1e7",
             button_color="#e74c3c", button_hover_color="#c0392b")
         cb.set(PRINTER_SETTING)
@@ -895,19 +895,19 @@ class SmartDashboard:
             btn_test.configure(text="출력 중...", state="disabled")
             win.update()
             _orig = PRINTER_SETTING
-            PRINTER_SETTING = cb.get()   # 저장 전이어도 현재 선택값으로 테스트
+            PRINTER_SETTING = cb.get()
             process_test_print()
-            PRINTER_SETTING = _orig      # 테스트 후 복원
+            PRINTER_SETTING = _orig
             btn_test.configure(text="테스트 출력", state="normal")
 
         btn_test = ctk.CTkButton(
-            tab1, text="테스트 출력", width=120, height=32,
+            tab1, text="테스트 출력", width=120, height=30,
             font=ctk.CTkFont("맑은 고딕", 10),
             fg_color="#7f8c8d", hover_color="#636e72",
             corner_radius=8, command=do_test)
         btn_test.pack(anchor="w", padx=4, pady=(8, 0))
 
-        ctk.CTkFrame(tab1, height=1, fg_color="#e8ecef").pack(fill="x", padx=4, pady=12)
+        ctk.CTkFrame(tab1, height=1, fg_color="#e8ecef").pack(fill="x", padx=4, pady=10)
 
         # 시스템
         ctk.CTkLabel(tab1, text="시스템 설정",
@@ -919,6 +919,19 @@ class SmartDashboard:
             variable=av, font=ctk.CTkFont("맑은 고딕", 11),
             checkmark_color="white", fg_color="#e74c3c",
             hover_color="#c0392b").pack(anchor="w", padx=4)
+
+        ctk.CTkFrame(tab1, height=1, fg_color="#e8ecef").pack(fill="x", padx=4, pady=10)
+
+        # 저장 버튼 (콘텐츠 마지막에 순서대로 배치)
+        ctk.CTkButton(tab1, text="설정 저장",
+                       font=ctk.CTkFont("맑은 고딕", 12, "bold"),
+                       fg_color="#e74c3c", hover_color="#c0392b",
+                       height=42, corner_radius=10, command=_save).pack(
+            fill="x", padx=4, pady=(0, 4))
+
+        ctk.CTkLabel(tab1, text=f"런치팝 알리미  v{CURRENT_VERSION}",
+                      font=ctk.CTkFont("맑은 고딕", 9),
+                      text_color="#bdc3c7").pack(pady=(0, 4))
 
         # ── 탭2: 로그 ──
         log_text = scrolledtext.ScrolledText(
@@ -949,8 +962,6 @@ class SmartDashboard:
             font=ctk.CTkFont("맑은 고딕", 10),
             fg_color="#27ae60", hover_color="#1e8449",
             height=32, corner_radius=8).pack(pady=4)
-
-        _center_window(win)
 
     def toggle_list(self):
         if self.list_win and self.list_win.winfo_exists():
