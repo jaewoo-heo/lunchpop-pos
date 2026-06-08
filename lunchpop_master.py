@@ -28,7 +28,7 @@ ctk.set_default_color_theme("blue")
 # ==========================================
 # [설정] 버전 및 URL
 # ==========================================
-CURRENT_VERSION = 3.4
+CURRENT_VERSION = 3.5
 TARGET_EXE_NAME = "LunchPop_Master.exe"
 
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzG_q6m1svwhZZny0DAz1s29qEGfVUO_gdnUOelX5QmIKPjTM8kvYjYhro_b7b_7w/exec"
@@ -75,6 +75,7 @@ dashboard = None
 PRINTER_SETTING = "기본 프린터"
 MY_STORE_NAME = ""
 consecutive_fail_count = 0
+_polling_thread = None          # 폴링 스레드 레퍼런스 (watchdog용)
 
 
 # ==========================================
@@ -486,8 +487,10 @@ def process_print(order, is_reprint=False):
                 }, retries=3, timeout=10)
                 if not resp:
                     write_local_log(f"[WARN] markDone 전송 실패 (로컬 완료 처리): {order.get('orderNo', '')}")
-                with orders_lock:
-                    printed_ids.add(order.get('orderNo', ''))
+                ono = order.get('orderNo', '')
+                if ono:  # 빈 문자열은 추가 금지 (전체 주문 차단 버그 방지)
+                    with orders_lock:
+                        printed_ids.add(ono)
             return True
         else:
             if dashboard:
@@ -655,10 +658,13 @@ def run_auto_printer():
                 if isinstance(server_data, list):
                     with orders_lock:
                         for o in server_data:
-                            if o.get('orderNo', '') in printed_ids:
+                            ono = o.get('orderNo', '')
+                            if not ono:
+                                continue  # orderNo 없는 주문은 추적 제외
+                            if ono in printed_ids:
                                 o['isPrinted'] = True
                             elif o.get('isPrinted'):
-                                printed_ids.add(o.get('orderNo', ''))
+                                printed_ids.add(ono)
                         GLOBAL_ORDERS = server_data
 
                     with orders_lock:
@@ -704,6 +710,25 @@ def run_auto_printer():
                 dashboard.root.after(0, lambda: dashboard.update_sync_status(False))
 
         time.sleep(CHECK_INTERVAL)
+
+
+def run_thread_watchdog():
+    """폴링 스레드가 죽으면 자동 재시작하는 감시자"""
+    global _polling_thread
+    time.sleep(120)  # 초기 기동 여유 시간
+    while True:
+        try:
+            if _polling_thread is not None and not _polling_thread.is_alive():
+                write_local_log("[WARN] 폴링 스레드 비정상 종료 감지 — 재시작 시도")
+                write_remote_log("[WARN] 폴링 스레드 재시작")
+                _polling_thread = threading.Thread(target=run_auto_printer, daemon=True)
+                _polling_thread.start()
+                write_local_log("[INFO] 폴링 스레드 재시작 완료")
+                if dashboard:
+                    dashboard.root.after(0, lambda: dashboard.update_sync_status(False, 0))
+        except Exception as e:
+            write_local_log(f"[ERR] watchdog 오류: {e}")
+        time.sleep(120)
 
 
 # ==========================================
@@ -1178,11 +1203,20 @@ class SmartDashboard:
         if self.scroll_frame is None:
             return
 
-        for w in self.scroll_frame.winfo_children():
-            w.destroy()
-
         with orders_lock:
             orders_snapshot = list(reversed(GLOBAL_ORDERS))
+
+        # 주문 상태 변화 없으면 전체 재렌더 건너뜀 (위젯 메모리 절약)
+        snapshot_key = [
+            (o.get('orderNo', ''), o.get('isPrinted'), o.get('isQueued'))
+            for o in orders_snapshot
+        ]
+        if snapshot_key == getattr(self, '_last_list_key', None):
+            return
+        self._last_list_key = snapshot_key
+
+        for w in self.scroll_frame.winfo_children():
+            w.destroy()
 
         if not orders_snapshot:
             ctk.CTkLabel(self.scroll_frame, text="오늘 주문이 없습니다.",
@@ -1299,7 +1333,9 @@ if __name__ == '__main__':
     set_autostart_registry(CONFIG.get("autostart", True))
 
     dashboard = SmartDashboard()
-    threading.Thread(target=run_auto_printer, daemon=True).start()
+    _polling_thread = threading.Thread(target=run_auto_printer, daemon=True)
+    _polling_thread.start()
+    threading.Thread(target=run_thread_watchdog, daemon=True).start()
     threading.Thread(target=run_auto_updater, daemon=True).start()
 
     def setup_tray():
