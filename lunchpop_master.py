@@ -69,6 +69,7 @@ orders_lock = threading.Lock()
 GLOBAL_ORDERS = []
 printed_ids = set()          # 인쇄 완료 orderNo 세트 (서버 재응답 시 덮어쓰기 방지)
 reprint_in_progress = set()  # 재출력 진행 중인 orderNo (중복 출력 방지)
+alerted_ids = set()          # 알람 재생한 orderNo 세트 (매 60초 중복 알람 방지)
 dashboard = None
 PRINTER_SETTING = "기본 프린터"
 MY_STORE_NAME = ""
@@ -570,7 +571,7 @@ def run_auto_updater():
 
 
 def run_auto_printer():
-    global GLOBAL_ORDERS, dashboard, consecutive_fail_count
+    global GLOBAL_ORDERS, dashboard, consecutive_fail_count, alerted_ids
 
     write_remote_log(f"[INFO] CONNECTED v{CURRENT_VERSION} ({PRINTER_SETTING})")
     last_cleanup_date = ""
@@ -612,18 +613,24 @@ def run_auto_printer():
                     with orders_lock:
                         pending = [o for o in GLOBAL_ORDERS if o.get('isQueued') and not o.get('isPrinted')]
                         total = len(GLOBAL_ORDERS)
-                        done_count = total - len(pending)
+                        done_count = len([o for o in GLOBAL_ORDERS if o.get('isPrinted')])
 
                     if dashboard:
                         t, d, p = total, done_count, len(pending)
                         dashboard.root.after(0, lambda _t=t, _d=d, _p=p: dashboard.update_counts(_t, _d, _p))
 
-                    # 알람은 대기 주문이 있을 때 1번만 재생
-                    if pending and os.path.exists(ALARM_FILE):
+                    # 알람: 이전에 알람 안 울린 신규 대기 주문이 있을 때만 재생
+                    pending_ids = {o.get('orderNo', '') for o in pending}
+                    new_alerts = pending_ids - alerted_ids
+                    if new_alerts and os.path.exists(ALARM_FILE):
                         try:
                             winsound.PlaySound(ALARM_FILE, winsound.SND_FILENAME | winsound.SND_ASYNC)
                         except Exception as e:
                             write_local_log(f"[WARN] 알람 재생 실패: {e}")
+                        alerted_ids.update(pending_ids)
+                    # 완료된 주문은 alerted_ids에서 제거 (재입고 등 대비)
+                    current_ids = {o.get('orderNo', '') for o in GLOBAL_ORDERS}
+                    alerted_ids &= current_ids
 
                     for o in pending:
                         if process_print(o):
@@ -807,8 +814,9 @@ class SmartDashboard:
         if self.list_win and self.list_win.winfo_exists():
             lh = self.list_win.winfo_height()
             sh = self.root.winfo_screenheight()
-            self._list_above = (ny + self.base_h + lh > sh)
-            ly = ny - lh if self._list_above else ny + self.base_h
+            dash_h = self.root.winfo_height()  # 에러 배너 포함 실제 높이
+            self._list_above = (ny + dash_h + lh > sh)
+            ly = ny - lh if self._list_above else ny + dash_h
             self.list_win.geometry(f"+{nx}+{ly}")
 
     def save_pos(self, _e):
@@ -834,24 +842,20 @@ class SmartDashboard:
         sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
         win.geometry(f"{W}x{H}+{(sw - W) // 2}+{(sh - H) // 3}")
 
-        # ttk.Combobox 공통 스타일 (네이티브 드롭다운 — 붕 뜨지 않음)
-        _style = ttk.Style(win)
-        _style.theme_use("default")
-        _style.configure("LP.TCombobox",
-            fieldbackground="white", background="#e74c3c",
-            foreground="#2c3e50", selectbackground="#fdecea",
-            selectforeground="#2c3e50", arrowcolor="white",
-            bordercolor="#dce1e7", lightcolor="#dce1e7", darkcolor="#dce1e7",
-            arrowsize=20, padding=(12, 10), font=("맑은 고딕", 11))
-        _style.map("LP.TCombobox",
-            background=[("active", "#c0392b"), ("!active", "#e74c3c")],
-            fieldbackground=[("readonly", "white")],
-            foreground=[("readonly", "#2c3e50")])
-        win.option_add("*TCombobox*Listbox.font", ("맑은 고딕", 11))
-        win.option_add("*TCombobox*Listbox.background", "white")
-        win.option_add("*TCombobox*Listbox.foreground", "#2c3e50")
-        win.option_add("*TCombobox*Listbox.selectBackground", "#fdecea")
-        win.option_add("*TCombobox*Listbox.selectForeground", "#2c3e50")
+        # ttk.Combobox 스타일 (설정창은 root와 같은 Tk 인스턴스 공유 → theme_use 중복 방지)
+        _style = ttk.Style(self.root)
+        if "LP.TCombobox" not in _style.theme_names() or \
+                not _style.lookup("LP.TCombobox", "background"):
+            _style.configure("LP.TCombobox",
+                fieldbackground="white", background="#e74c3c",
+                foreground="#2c3e50", selectbackground="#fdecea",
+                selectforeground="#2c3e50", arrowcolor="white",
+                bordercolor="#dce1e7", lightcolor="#dce1e7", darkcolor="#dce1e7",
+                arrowsize=20, padding=(12, 10), font=("맑은 고딕", 11))
+            _style.map("LP.TCombobox",
+                background=[("active", "#c0392b"), ("!active", "#e74c3c")],
+                fieldbackground=[("readonly", "white")],
+                foreground=[("readonly", "#2c3e50")])
 
         # ── 헤더 ──
         header = ctk.CTkFrame(win, fg_color="#e74c3c", corner_radius=0, height=58)
@@ -986,12 +990,20 @@ class SmartDashboard:
         def do_test():
             global PRINTER_SETTING
             btn_test.configure(text="출력 중...", state="disabled")
-            win.update()
             _orig = PRINTER_SETTING
             PRINTER_SETTING = cb.get()
-            process_test_print()
-            PRINTER_SETTING = _orig
-            btn_test.configure(text="테스트 출력", state="normal")
+
+            def _run():
+                try:
+                    process_test_print()
+                finally:
+                    global PRINTER_SETTING
+                    PRINTER_SETTING = _orig
+                    try:
+                        win.after(0, lambda: btn_test.configure(text="테스트 출력", state="normal"))
+                    except Exception:
+                        pass
+            threading.Thread(target=_run, daemon=True).start()
 
         btn_test = ctk.CTkButton(
             scroll_s, text="테스트 출력", width=110, height=30,
@@ -1068,8 +1080,9 @@ class SmartDashboard:
     def show_list(self):
         h = 400
         x, y = self.root.winfo_x(), self.root.winfo_y()
-        self._list_above = (y + h + self.base_h > self.root.winfo_screenheight())
-        ny = y - h if self._list_above else y + self.base_h
+        dash_h = self.root.winfo_height()  # 에러 배너 포함 실제 높이
+        self._list_above = (y + dash_h + h > self.root.winfo_screenheight())
+        ny = y - h if self._list_above else y + dash_h
 
         # tk.Toplevel 사용 — CTkToplevel은 생성 시 부모 창을 Z뒤로 밀어냄
         self.list_win = tk.Toplevel(self.root)
@@ -1165,8 +1178,7 @@ class SmartDashboard:
             btn.pack(side="right", padx=10)
             btn.configure(command=self._make_reprint_cmd(o, btn))
 
-    @staticmethod
-    def _make_reprint_cmd(order, button):
+    def _make_reprint_cmd(self, order, button):
         def cmd():
             ono = order.get('orderNo', '')
             if ono in reprint_in_progress:
@@ -1179,8 +1191,10 @@ class SmartDashboard:
                     process_print(order, is_reprint=True)
                 finally:
                     reprint_in_progress.discard(ono)
+                    # UI 업데이트는 반드시 메인 스레드에서
                     try:
-                        button.configure(text="재출력", state="normal", fg_color="#bdc3c7")
+                        self.root.after(0, lambda: button.configure(
+                            text="재출력", state="normal", fg_color="#bdc3c7"))
                     except Exception:
                         pass
 
