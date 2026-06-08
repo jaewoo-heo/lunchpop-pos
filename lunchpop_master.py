@@ -28,7 +28,7 @@ ctk.set_default_color_theme("blue")
 # ==========================================
 # [설정] 버전 및 URL
 # ==========================================
-CURRENT_VERSION = 3.3
+CURRENT_VERSION = 3.4
 TARGET_EXE_NAME = "LunchPop_Master.exe"
 
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzG_q6m1svwhZZny0DAz1s29qEGfVUO_gdnUOelX5QmIKPjTM8kvYjYhro_b7b_7w/exec"
@@ -47,6 +47,7 @@ BAT_FILE = os.path.join(BASE_DIR, "updater.bat")
 LOCAL_LOG_FILE = os.path.join(BASE_DIR, "system_debug.log")
 LOCAL_LOG_OLD = os.path.join(BASE_DIR, "system_debug.old.log")
 TARGET_EXE_PATH = os.path.join(BASE_DIR, TARGET_EXE_NAME)
+BACKUP_EXE_PATH = os.path.join(BASE_DIR, "LunchPop_Master.backup.exe")
 
 
 def resource_path(relative_path):
@@ -509,26 +510,32 @@ def run_auto_updater():
             if resp:
                 data = resp.json()
                 server_version = float(data.get("version", 1.0))
+                force_update = str(data.get("forceUpdate", "")).upper() == "TRUE"
+
                 if server_version > CURRENT_VERSION:
                     update_url = data.get("url", "")
                     expected_sha256 = data.get("sha256", "")
 
-                    approved = [False]
-                    done_event = threading.Event()
+                    # 강제 업데이트: 사용자 확인 없이 즉시 진행
+                    if force_update:
+                        write_remote_log(f"[INFO] 강제 업데이트 시작: v{server_version}")
+                    else:
+                        approved = [False]
+                        done_event = threading.Event()
 
-                    def ask():
-                        approved[0] = messagebox.askyesno(
-                            "업데이트 알림",
-                            f"새 버전 v{server_version}이 있습니다.\n지금 업데이트하시겠습니까?\n(완료 후 자동 재시작됩니다)"
-                        )
-                        done_event.set()
+                        def ask():
+                            approved[0] = messagebox.askyesno(
+                                "업데이트 알림",
+                                f"새 버전 v{server_version}이 있습니다.\n지금 업데이트하시겠습니까?\n(완료 후 자동 재시작됩니다)"
+                            )
+                            done_event.set()
 
-                    if dashboard:
-                        dashboard.root.after(0, ask)
-                        done_event.wait(timeout=60)
-                        if not approved[0]:
-                            time.sleep(86400)
-                            continue
+                        if dashboard:
+                            dashboard.root.after(0, ask)
+                            done_event.wait(timeout=60)
+                            if not approved[0]:
+                                time.sleep(86400)
+                                continue
 
                     temp_exe = os.path.join(BASE_DIR, "update_new.exe")
                     write_local_log(f"[INFO] 업데이트 다운로드 시작: v{server_version}")
@@ -553,11 +560,24 @@ def run_auto_updater():
                         time.sleep(86400)
                         continue
 
+                    # 롤백용 백업: 현재 exe → .backup.exe 보존
+                    try:
+                        if os.path.exists(TARGET_EXE_PATH):
+                            shutil.copy2(TARGET_EXE_PATH, BACKUP_EXE_PATH)
+                            write_local_log(f"[INFO] 롤백 백업 생성: {BACKUP_EXE_PATH}")
+                    except Exception as e:
+                        write_local_log(f"[WARN] 백업 실패 (계속 진행): {e}")
+
+                    # BAT: 백업 보존 → 새 파일 교체 → 실행
+                    # 새 버전이 정상 시작되면 스스로 backup 삭제
                     with open(BAT_FILE, "w", encoding="cp949") as f:
                         f.write(
-                            f'@echo off\ntimeout /t 2\ndel "{TARGET_EXE_PATH}"\n'
+                            f'@echo off\n'
+                            f'timeout /t 2\n'
+                            f'del "{TARGET_EXE_PATH}"\n'
                             f'move "{temp_exe}" "{TARGET_EXE_PATH}"\n'
-                            f'start "" "{TARGET_EXE_PATH}"\ndel "%~f0"'
+                            f'start "" "{TARGET_EXE_PATH}"\n'
+                            f'del "%~f0"\n'
                         )
 
                     write_remote_log(f"[INFO] 업데이트 설치: v{CURRENT_VERSION} → v{server_version}")
@@ -570,17 +590,48 @@ def run_auto_updater():
         time.sleep(86400)
 
 
+def check_printer_online():
+    """프린터 온라인 상태 사전 확인"""
+    try:
+        if PRINTER_SETTING.startswith("COM"):
+            with serial.Serial(PRINTER_SETTING, 9600, timeout=1):
+                return True
+        else:
+            p_name = win32print.GetDefaultPrinter() if PRINTER_SETTING == "기본 프린터" else PRINTER_SETTING
+            hPrinter = win32print.OpenPrinter(p_name)
+            info = win32print.GetPrinter(hPrinter, 2)
+            win32print.ClosePrinter(hPrinter)
+            # Status 0 = 정상, 그 외 = 오프라인/오류
+            return info['Status'] == 0
+    except Exception:
+        return False
+
+
 def run_auto_printer():
     global GLOBAL_ORDERS, dashboard, consecutive_fail_count, alerted_ids
 
     write_remote_log(f"[INFO] CONNECTED v{CURRENT_VERSION} ({PRINTER_SETTING})")
     last_cleanup_date = ""
     heartbeat_counter = 0
+    printer_ok = True          # 프린터 이전 상태 (변경 시에만 알림)
 
     while True:
         try:
             now = datetime.now()
             today_str = now.strftime("%Y-%m-%d")
+
+            # 프린터 사전 상태 체크 (상태 변경 시에만 대시보드 업데이트)
+            current_printer_ok = check_printer_online()
+            if current_printer_ok != printer_ok:
+                printer_ok = current_printer_ok
+                if dashboard:
+                    if not printer_ok:
+                        dashboard.root.after(0, lambda: dashboard.show_print_error(
+                            {"orderNo": "0000", "customerName": "프린터 오프라인 — 연결을 확인하세요"}))
+                        write_local_log(f"[WARN] 프린터 오프라인 감지: {PRINTER_SETTING}")
+                    else:
+                        dashboard.root.after(0, dashboard.dismiss_error)
+                        write_local_log(f"[INFO] 프린터 온라인 복구: {PRINTER_SETTING}")
 
             # 새벽 4시 - 인쇄 완료된 주문만 정리 (미완료 주문 보존)
             if now.hour == 4 and last_cleanup_date != today_str:
@@ -1227,6 +1278,14 @@ if __name__ == '__main__':
             sys.exit(0)
 
     write_local_log(f"--- Application Started (v{CURRENT_VERSION}) ---")
+
+    # 업데이트 후 정상 시작 확인 → 백업 파일 삭제
+    if os.path.exists(BACKUP_EXE_PATH):
+        try:
+            os.remove(BACKUP_EXE_PATH)
+            write_local_log("[INFO] 업데이트 성공 확인 — 백업 파일 삭제 완료")
+        except Exception:
+            pass
 
     if not CONFIG.get("storeName"):
         select_store_ui()
