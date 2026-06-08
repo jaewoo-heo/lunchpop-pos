@@ -12,7 +12,7 @@ import re
 import serial
 import json
 import tkinter as tk
-from tkinter import messagebox, scrolledtext
+from tkinter import messagebox, scrolledtext, ttk
 import customtkinter as ctk
 import subprocess
 import winreg
@@ -214,6 +214,25 @@ def select_store_ui():
     root.resizable(False, False)
     _set_icon(root)
 
+    # ttk.Combobox 스타일
+    _style = ttk.Style(root)
+    _style.theme_use("default")
+    _style.configure("LP.TCombobox",
+        fieldbackground="white", background="#e74c3c",
+        foreground="#2c3e50", selectbackground="#fdecea",
+        selectforeground="#2c3e50", arrowcolor="white",
+        bordercolor="#dce1e7", lightcolor="#dce1e7", darkcolor="#dce1e7",
+        padding=(10, 7), font=("맑은 고딕", 11))
+    _style.map("LP.TCombobox",
+        background=[("active", "#c0392b"), ("!active", "#e74c3c")],
+        fieldbackground=[("readonly", "white")],
+        foreground=[("readonly", "#2c3e50")])
+    root.option_add("*TCombobox*Listbox.font", ("맑은 고딕", 11))
+    root.option_add("*TCombobox*Listbox.background", "white")
+    root.option_add("*TCombobox*Listbox.foreground", "#2c3e50")
+    root.option_add("*TCombobox*Listbox.selectBackground", "#fdecea")
+    root.option_add("*TCombobox*Listbox.selectForeground", "#2c3e50")
+
     def on_close():
         if messagebox.askyesno("종료 확인", "설정을 완료하지 않으면 프로그램이 종료됩니다.\n종료하시겠습니까?"):
             root.destroy()
@@ -247,14 +266,9 @@ def select_store_ui():
                   font=ctk.CTkFont("맑은 고딕", 10),
                   text_color="#95a5a6").pack(anchor="w", padx=20)
 
-    store_combo = ctk.CTkComboBox(card, values=["로딩 중..."], width=340,
-                                   font=ctk.CTkFont("맑은 고딕", 11),
-                                   border_color="#dce1e7",
-                                   button_color="#e74c3c", button_hover_color="#c0392b",
-                                   fg_color="white", text_color="#2c3e50",
-                                   dropdown_fg_color="white", dropdown_text_color="#2c3e50",
-                                   dropdown_hover_color="#fdecea")
-    store_combo.pack(padx=20, pady=(8, 0))
+    store_combo = ttk.Combobox(card, style="LP.TCombobox",
+                                font=("맑은 고딕", 11), width=32, state="normal")
+    store_combo.pack(padx=20, pady=(8, 0), ipady=2, anchor="w")
     store_combo.set("로딩 중...")
 
     ctk.CTkFrame(card, height=1, fg_color="#f0f0f0").pack(fill="x", padx=20, pady=16)
@@ -276,11 +290,10 @@ def select_store_ui():
         pass
     printer_list += [f"COM{i}" for i in range(1, 13)]
 
-    printer_combo = ctk.CTkComboBox(card, values=printer_list, width=340,
-                                     font=ctk.CTkFont("맑은 고딕", 11),
-                                     border_color="#dce1e7",
-                                     button_color="#e74c3c", button_hover_color="#c0392b")
-    printer_combo.pack(padx=20, pady=(8, 0))
+    printer_combo = ttk.Combobox(card, style="LP.TCombobox",
+                                  font=("맑은 고딕", 11), width=32,
+                                  values=printer_list, state="readonly")
+    printer_combo.pack(padx=20, pady=(8, 0), ipady=2, anchor="w")
     printer_combo.set(CONFIG.get("printer", "기본 프린터"))
 
     ctk.CTkFrame(card, height=1, fg_color="#f0f0f0").pack(fill="x", padx=20, pady=16)
@@ -812,6 +825,25 @@ class SmartDashboard:
         sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
         win.geometry(f"{W}x{H}+{(sw - W) // 2}+{(sh - H) // 3}")
 
+        # ttk.Combobox 공통 스타일 (네이티브 드롭다운 — 붕 뜨지 않음)
+        _style = ttk.Style(win)
+        _style.theme_use("default")
+        _style.configure("LP.TCombobox",
+            fieldbackground="white", background="#e74c3c",
+            foreground="#2c3e50", selectbackground="#fdecea",
+            selectforeground="#2c3e50", arrowcolor="white",
+            bordercolor="#dce1e7", lightcolor="#dce1e7", darkcolor="#dce1e7",
+            padding=(10, 7), font=("맑은 고딕", 11))
+        _style.map("LP.TCombobox",
+            background=[("active", "#c0392b"), ("!active", "#e74c3c")],
+            fieldbackground=[("readonly", "white")],
+            foreground=[("readonly", "#2c3e50")])
+        win.option_add("*TCombobox*Listbox.font", ("맑은 고딕", 11))
+        win.option_add("*TCombobox*Listbox.background", "white")
+        win.option_add("*TCombobox*Listbox.foreground", "#2c3e50")
+        win.option_add("*TCombobox*Listbox.selectBackground", "#fdecea")
+        win.option_add("*TCombobox*Listbox.selectForeground", "#2c3e50")
+
         # ── 헤더 ──
         header = ctk.CTkFrame(win, fg_color="#e74c3c", corner_radius=0, height=58)
         header.pack(fill="x")
@@ -903,15 +935,10 @@ class SmartDashboard:
         ctk.CTkLabel(scroll_s, text="매장명",
                       font=ctk.CTkFont("맑은 고딕", 11, "bold"),
                       text_color="#2c3e50").pack(anchor="w", padx=PAD, pady=(16, 4))
-        store_entry = ctk.CTkComboBox(
-            scroll_s, font=ctk.CTkFont("맑은 고딕", 11), width=310,
-            border_color="#dce1e7",
-            button_color="#e74c3c", button_hover_color="#c0392b",
-            fg_color="white", text_color="#2c3e50",
-            dropdown_fg_color="white", dropdown_text_color="#2c3e50",
-            dropdown_hover_color="#fdecea")
+        store_entry = ttk.Combobox(scroll_s, style="LP.TCombobox",
+                                    font=("맑은 고딕", 11), width=28, state="normal")
+        store_entry.pack(anchor="w", padx=PAD, ipady=2)
         store_entry.set(MY_STORE_NAME)
-        store_entry.pack(anchor="w", padx=PAD)
 
         def _load_stores_bg():
             try:
@@ -939,16 +966,11 @@ class SmartDashboard:
             pass
         printer_list += [f"COM{i}" for i in range(1, 13)]
 
-        cb = ctk.CTkComboBox(
-            scroll_s, values=printer_list,
-            font=ctk.CTkFont("맑은 고딕", 11), width=310,
-            border_color="#dce1e7",
-            button_color="#e74c3c", button_hover_color="#c0392b",
-            fg_color="white", text_color="#2c3e50",
-            dropdown_fg_color="white", dropdown_text_color="#2c3e50",
-            dropdown_hover_color="#fdecea")
+        cb = ttk.Combobox(scroll_s, style="LP.TCombobox",
+                           font=("맑은 고딕", 11), width=28,
+                           values=printer_list, state="readonly")
+        cb.pack(anchor="w", padx=PAD, ipady=2)
         cb.set(PRINTER_SETTING)
-        cb.pack(anchor="w", padx=PAD)
 
         def do_test():
             global PRINTER_SETTING
