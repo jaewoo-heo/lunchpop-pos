@@ -50,6 +50,17 @@ jobs:
           --icon "assets/logo.ico"
           lunchpop_launcher.py
 
+      - name: Setup 빌드
+        shell: cmd
+        run: >
+          python -m PyInstaller
+          --onefile --noconsole
+          --name "LunchPop_Setup"
+          --icon "assets/logo.ico"
+          --hidden-import=win32com.client
+          --hidden-import=pywintypes
+          lunchpop_setup.py
+
       - name: SHA256 계산
         id: sha256
         shell: powershell
@@ -70,8 +81,7 @@ jobs:
             - 업데이트 내용을 여기에 작성하세요.
 
             ## 신규 설치 (처음 설치하는 기기)
-            1. `LunchPop_Launcher.exe` + `LunchPop_Master.exe` 같은 폴더에 저장
-            2. `LunchPop_Launcher.exe` 실행 (이후 자동 시작 등록됨)
+            `LunchPop_Setup.exe` 하나만 실행하면 자동 설치됩니다.
 
             ## 기존 기기 자동 업데이트
             버전관리 시트 업데이트 후 프로그램 재시작 시 자동 적용
@@ -83,8 +93,7 @@ jobs:
             | B2 | Release에서 `LunchPop_Master.exe` 링크 복사 |
             | C2 | `${{ steps.sha256.outputs.master }}` |
           files: |
-            dist/LunchPop_Master.exe
+            dist/LunchPop_Setup.exe
             dist/LunchPop_Launcher.exe
+            dist/LunchPop_Master.exe
           make_latest: true
-          # ⚠️ 저장소가 Private이면 아래 주석 해제
-          # prerelease: false
