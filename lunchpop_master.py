@@ -1159,6 +1159,7 @@ class SmartDashboard:
             self.btn_list.configure(text="주문리스트 ▲")
 
     def show_list(self):
+        self._last_list_key = None  # 창 새로 열 때 항상 새로 렌더링
         h = 400
         x, y = self.root.winfo_x(), self.root.winfo_y()
         dash_h = self.root.winfo_height()  # 에러 배너 포함 실제 높이
