@@ -28,7 +28,7 @@ ctk.set_default_color_theme("blue")
 # ==========================================
 # [설정] 버전 및 URL
 # ==========================================
-CURRENT_VERSION = 3.6
+CURRENT_VERSION = 4.0
 TARGET_EXE_NAME = "LunchPop_Master.exe"
 
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzG_q6m1svwhZZny0DAz1s29qEGfVUO_gdnUOelX5QmIKPjTM8kvYjYhro_b7b_7w/exec"
@@ -132,23 +132,24 @@ def fetch_with_retry(url, params=None, retries=3, timeout=20):
 
 
 def set_autostart_registry(enable=True):
+    """자동 시작 등록 — Launcher가 있으면 Launcher 우선, 없으면 Master 직접 등록"""
+    LAUNCHER_PATH = os.path.join(BASE_DIR, "LunchPop_Launcher.exe")
+    target = LAUNCHER_PATH if os.path.exists(LAUNCHER_PATH) else TARGET_EXE_PATH
     key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
     try:
         reg = winreg.ConnectRegistry(None, winreg.HKEY_CURRENT_USER)
         key_obj = winreg.OpenKey(reg, key_path, 0, winreg.KEY_ALL_ACCESS)
         if enable:
-            winreg.SetValueEx(key_obj, "LunchPopMaster", 0, winreg.REG_SZ, f'"{TARGET_EXE_PATH}"')
+            winreg.SetValueEx(key_obj, "LunchPopAlrimi", 0, winreg.REG_SZ, f'"{target}"')
         else:
-            try:
-                winreg.DeleteValue(key_obj, "LunchPopMaster")
-            except FileNotFoundError:
-                pass
+            for name in ("LunchPopAlrimi", "LunchPopMaster"):
+                try:
+                    winreg.DeleteValue(key_obj, name)
+                except FileNotFoundError:
+                    pass
         winreg.CloseKey(key_obj)
     except Exception as e:
         write_local_log(f"[ERR] 레지스트리 오류: {e}")
-        if dashboard:
-            dashboard.root.after(0, lambda: messagebox.showwarning(
-                "경고", f"시작 프로그램 등록 실패:\n{e}\n\n수동으로 설정이 필요할 수 있습니다."))
 
 
 def load_config():
@@ -1342,7 +1343,7 @@ if __name__ == '__main__':
     _polling_thread = threading.Thread(target=run_auto_printer, daemon=True)
     _polling_thread.start()
     threading.Thread(target=run_thread_watchdog, daemon=True).start()
-    threading.Thread(target=run_auto_updater, daemon=True).start()
+    # 업데이트는 Launcher가 담당 — Master에서 run_auto_updater 스레드 제거
 
     def setup_tray():
         try:
