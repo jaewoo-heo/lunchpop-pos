@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>런치팝 알리미 설치</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
+      background: #f5f6fa;
+      color: #2d3436;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+      max-width: 480px;
+      width: 100%;
+      padding: 40px 36px 36px;
+    }
+
+    .logo {
+      font-size: 36px;
+      text-align: center;
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 32px;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #888;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .download-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+      border-radius: 10px;
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 600;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.13); }
+    .btn:active { transform: translateY(0); }
+
+    .btn-launcher {
+      background: #2563eb;
+      color: #fff;
+    }
+    .btn-master {
+      background: #f1f5ff;
+      color: #2563eb;
+      border: 1.5px solid #c7d9ff;
+    }
+
+    .btn-icon { font-size: 20px; }
+    .btn-text { flex: 1; }
+    .btn-text span { display: block; font-size: 11px; font-weight: 400; opacity: 0.75; margin-top: 1px; }
+
+    .steps {
+      background: #f8f9fc;
+      border-radius: 10px;
+      padding: 18px 20px;
+      margin-bottom: 20px;
+    }
+
+    .step {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    .step:last-child { margin-bottom: 0; }
+
+    .step-num {
+      background: #2563eb;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .step-text {
+      font-size: 13.5px;
+      line-height: 1.5;
+    }
+    .step-text strong { color: #2563eb; }
+
+    .notice {
+      background: #fffbea;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 12.5px;
+      line-height: 1.6;
+      color: #78350f;
+    }
+    .notice b { font-weight: 700; }
+
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      color: #bbb;
+      margin-top: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🍱</div>
+    <h1>런치팝 알리미 설치</h1>
+    <p class="subtitle">주문 자동 출력 프로그램</p>
+
+    <p class="section-title">파일 다운로드</p>
+    <div class="download-group">
+      <a class="btn btn-launcher"
+         href="https://github.com/jaewoo-heo/lunchpop-pos/releases/latest/download/LunchPop_Launcher.exe"
+         download>
+        <span class="btn-icon">🚀</span>
+        <span class="btn-text">
+          LunchPop_Launcher.exe
+          <span>업데이트 관리 · 필수</span>
+        </span>
+        ⬇
+      </a>
+      <a class="btn btn-master"
+         href="https://github.com/jaewoo-heo/lunchpop-pos/releases/latest/download/LunchPop_Master.exe"
+         download>
+        <span class="btn-icon">🖨️</span>
+        <span class="btn-text">
+          LunchPop_Master.exe
+          <span>주문 수신 · 인쇄 · 필수</span>
+        </span>
+        ⬇
+      </a>
+    </div>
+
+    <p class="section-title">설치 방법</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-text">두 파일을 <strong>같은 폴더</strong>에 저장합니다.<br>예) 바탕화면\런치팝\</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-text"><strong>LunchPop_Launcher.exe</strong>를 실행합니다.<br>(Master는 직접 실행하지 않아도 됩니다)</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-text">매장명과 프린터를 설정하면 완료입니다.<br>이후 PC 시작 시 자동으로 실행됩니다.</div>
+      </div>
+    </div>
+
+    <div class="notice">
+      <b>⚠ Windows 보안 경고가 뜨는 경우</b><br>
+      "추가 정보" 클릭 → <b>"실행"</b> 버튼 클릭
+    </div>
+
+    <div class="footer">런치팝 · 문의: 관리자에게 연락해주세요</div>
+  </div>
+</body>
+</html>
