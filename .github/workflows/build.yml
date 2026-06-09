@@ -59,6 +59,7 @@ jobs:
           --icon "assets/logo.ico"
           --hidden-import=win32com.client
           --hidden-import=pywintypes
+          --manifest "setup_admin.manifest"
           lunchpop_setup.py
 
       - name: SHA256 계산

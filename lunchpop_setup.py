@@ -17,7 +17,7 @@ from tkinter import ttk, messagebox
 from datetime import datetime
 
 SETUP_VERSION = "1.0"
-INSTALL_DIR   = os.path.join(os.environ.get("LOCALAPPDATA", "C:\\Users\\Public"), "LunchPop")
+INSTALL_DIR   = r"C:\LunchPop"
 LAUNCHER_NAME = "LunchPop_Launcher.exe"
 LAUNCHER_URL  = "https://github.com/jaewoo-heo/lunchpop-pos/releases/latest/download/LunchPop_Launcher.exe"
 LAUNCHER_PATH = os.path.join(INSTALL_DIR, LAUNCHER_NAME)
