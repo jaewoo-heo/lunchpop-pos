@@ -95,13 +95,20 @@ function doGet(e) {
     // P2가 비어있으면 날짜 필터 없이 전체 반환 (안전장치)
     var refDate = sheet.getRange(2, 16).getDisplayValue().trim();
 
+    // 날짜 정규화: 숫자만 추출하여 비교 (구분자, 요일, 괄호 등 모두 무시)
+    // 예) "2026.06.09.(화)" = "2026/06/09" = "2026-06-09" 모두 "20260609"으로 동일 처리
+    var normDate = function(d) {
+      return d.replace(/\D/g, '');
+    };
+    var refNorm = normDate(refDate);
+
     var values = sheet.getRange(2, 1, lastRow - 1, 12).getDisplayValues();
     var result = [];
 
     for (var j = 0; j < values.length; j++) {
       var row = values[j];
-      // P2 날짜와 resDate(G열) 일치 여부 — 포맷 차이를 흡수하기 위해 양방향 포함 검사
-      var dateMatch = (refDate === "") || (row[6] === refDate) || (row[6].indexOf(refDate) !== -1);
+      // 정규화된 날짜 비교 — 구분자 형식 달라도 매칭
+      var dateMatch = (refDate === "") || (normDate(row[6]) === refNorm);
       if (row[4].indexOf(storeName) !== -1 && dateMatch) {
         result.push({
           rowIndex:     j + 2,          // markDone O(1)용 행 번호

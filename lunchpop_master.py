@@ -28,7 +28,7 @@ ctk.set_default_color_theme("blue")
 # ==========================================
 # [설정] 버전 및 URL
 # ==========================================
-CURRENT_VERSION = 3.5
+CURRENT_VERSION = 3.6
 TARGET_EXE_NAME = "LunchPop_Master.exe"
 
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzG_q6m1svwhZZny0DAz1s29qEGfVUO_gdnUOelX5QmIKPjTM8kvYjYhro_b7b_7w/exec"
@@ -477,27 +477,32 @@ def _build_receipt_bytes(order, is_reprint=False):
 
 def process_print(order, is_reprint=False):
     try:
+        ono = order.get('orderNo', '')
+        tag = "[재출력]" if is_reprint else "[인쇄]"
+        write_remote_log(f"{tag} 시작: {ono} ({order.get('customerName', '')})")
+
         receipt_bytes = _build_receipt_bytes(order, is_reprint)
         if print_raw_text(receipt_bytes):
             if not is_reprint:
                 resp = fetch_with_retry(WEB_APP_URL, params={
                     "action": "markDone",
                     "rowIndex": order.get('rowIndex', ''),
-                    "orderNo": order.get('orderNo', '')
+                    "orderNo": ono
                 }, retries=3, timeout=10)
                 if not resp:
-                    write_local_log(f"[WARN] markDone 전송 실패 (로컬 완료 처리): {order.get('orderNo', '')}")
-                ono = order.get('orderNo', '')
+                    write_local_log(f"[WARN] markDone 전송 실패 (로컬 완료 처리): {ono}")
                 if ono:  # 빈 문자열은 추가 금지 (전체 주문 차단 버그 방지)
                     with orders_lock:
                         printed_ids.add(ono)
+            write_remote_log(f"{tag} 완료: {ono}")
             return True
         else:
+            write_remote_log(f"{tag} 실패: {ono} (프린터 오류)")
             if dashboard:
                 dashboard.root.after(0, lambda o=order: dashboard.show_print_error(o))
             return False
     except Exception as e:
-        write_remote_log(f"[ERR] process_print: {e}")
+        write_remote_log(f"[ERR] process_print: {ono} / {e}")
         if dashboard:
             dashboard.root.after(0, lambda o=order: dashboard.show_print_error(o))
         return False
