@@ -29,9 +29,17 @@ TEMP_PATH    = os.path.join(BASE_DIR, "LunchPop_Master.update.exe")
 LOG_FILE     = os.path.join(BASE_DIR, "launcher_debug.log")
 
 
-# ── 로그 ──────────────────────────────────────────────────
+# ── 로그 (5MB 초과 시 로테이션) ──────────────────────────
+MAX_LOG_BYTES = 5 * 1024 * 1024  # 5 MB
+
 def log(msg):
     try:
+        # 5MB 초과 시 .old 로 백업하고 새 파일 시작
+        if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > MAX_LOG_BYTES:
+            old_log = LOG_FILE.replace(".log", ".old.log")
+            if os.path.exists(old_log):
+                os.remove(old_log)
+            os.rename(LOG_FILE, old_log)
         with open(LOG_FILE, 'a', encoding='utf-8') as f:
             f.write(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {msg}\n")
     except Exception:

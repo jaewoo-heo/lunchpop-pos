@@ -16,7 +16,6 @@ from tkinter import messagebox, scrolledtext, ttk
 import customtkinter as ctk
 import subprocess
 import winreg
-import hashlib
 import shutil
 
 # ==========================================
@@ -43,7 +42,6 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 CONFIG_FILE = os.path.join(BASE_DIR, "lunchpop_config.json")
-BAT_FILE = os.path.join(BASE_DIR, "updater.bat")
 LOCAL_LOG_FILE = os.path.join(BASE_DIR, "system_debug.log")
 LOCAL_LOG_OLD = os.path.join(BASE_DIR, "system_debug.old.log")
 TARGET_EXE_PATH = os.path.join(BASE_DIR, TARGET_EXE_NAME)
@@ -67,6 +65,7 @@ ALARM_FILE = _alarm_override if os.path.exists(_alarm_override) else resource_pa
 # 전역 상태 (스레드 안전)
 # ==========================================
 orders_lock = threading.Lock()
+_print_lock = threading.Lock()   # 동시 인쇄 방지 (폴링 자동인쇄 + UI 재출력 충돌 방지)
 GLOBAL_ORDERS = []
 printed_ids = set()          # 인쇄 완료 orderNo 세트 (서버 재응답 시 덮어쓰기 방지)
 reprint_in_progress = set()  # 재출력 진행 중인 orderNo (중복 출력 방지)
@@ -373,48 +372,50 @@ def select_store_ui():
 # [2] 인쇄 핵심 로직
 # ==========================================
 def print_raw_text(receipt_bytes):
+    """프린터에 RAW 데이터 전송. _print_lock으로 동시 인쇄 방지."""
     last_err = ""
-    for attempt in range(3):
-        try:
-            if PRINTER_SETTING == "기본 프린터":
-                p_name = win32print.GetDefaultPrinter()
-                hPrinter = win32print.OpenPrinter(p_name)
-                try:
-                    win32print.StartDocPrinter(hPrinter, 1, ("LunchPopOrder", None, "RAW"))
-                    win32print.StartPagePrinter(hPrinter)
-                    win32print.WritePrinter(hPrinter, receipt_bytes)
-                    win32print.EndPagePrinter(hPrinter)
-                    win32print.EndDocPrinter(hPrinter)
-                finally:
-                    win32print.ClosePrinter(hPrinter)
-                return True
-            elif PRINTER_SETTING.startswith("COM"):
-                with serial.Serial(PRINTER_SETTING, 9600, timeout=2) as ser:
-                    ser.write(b'\x10\x04\x04')
-                    status = ser.read(1)
-                    if status and (ord(status) & 0x60) == 0x60:
-                        write_remote_log(f"[WARN] {PRINTER_SETTING} 용지 없음!")
-                        return False
-                    ser.write(receipt_bytes)
-                    time.sleep(0.5)
-                return True
-            else:
-                hPrinter = win32print.OpenPrinter(PRINTER_SETTING)
-                try:
-                    win32print.StartDocPrinter(hPrinter, 1, ("LunchPopOrder", None, "RAW"))
-                    win32print.StartPagePrinter(hPrinter)
-                    win32print.WritePrinter(hPrinter, receipt_bytes)
-                    win32print.EndPagePrinter(hPrinter)
-                    win32print.EndDocPrinter(hPrinter)
-                finally:
-                    win32print.ClosePrinter(hPrinter)
-                return True
-        except Exception as e:
-            last_err = str(e)
-            write_local_log(f"[WARN] 인쇄 시도 {attempt + 1}/3 실패: {e}")
-            time.sleep(1)
-    write_remote_log(f"[ERR] PRINT FATAL ({PRINTER_SETTING}): {last_err}")
-    return False
+    with _print_lock:
+        for attempt in range(3):
+            try:
+                if PRINTER_SETTING == "기본 프린터":
+                    p_name = win32print.GetDefaultPrinter()
+                    hPrinter = win32print.OpenPrinter(p_name)
+                    try:
+                        win32print.StartDocPrinter(hPrinter, 1, ("LunchPopOrder", None, "RAW"))
+                        win32print.StartPagePrinter(hPrinter)
+                        win32print.WritePrinter(hPrinter, receipt_bytes)
+                        win32print.EndPagePrinter(hPrinter)
+                        win32print.EndDocPrinter(hPrinter)
+                    finally:
+                        win32print.ClosePrinter(hPrinter)
+                    return True
+                elif PRINTER_SETTING.startswith("COM"):
+                    with serial.Serial(PRINTER_SETTING, 9600, timeout=2) as ser:
+                        ser.write(b'\x10\x04\x04')
+                        status = ser.read(1)
+                        if status and (ord(status) & 0x60) == 0x60:
+                            write_remote_log(f"[WARN] {PRINTER_SETTING} 용지 없음!")
+                            return False
+                        ser.write(receipt_bytes)
+                        time.sleep(0.5)
+                    return True
+                else:
+                    hPrinter = win32print.OpenPrinter(PRINTER_SETTING)
+                    try:
+                        win32print.StartDocPrinter(hPrinter, 1, ("LunchPopOrder", None, "RAW"))
+                        win32print.StartPagePrinter(hPrinter)
+                        win32print.WritePrinter(hPrinter, receipt_bytes)
+                        win32print.EndPagePrinter(hPrinter)
+                        win32print.EndDocPrinter(hPrinter)
+                    finally:
+                        win32print.ClosePrinter(hPrinter)
+                    return True
+            except Exception as e:
+                last_err = str(e)
+                write_local_log(f"[WARN] 인쇄 시도 {attempt + 1}/3 실패: {e}")
+                time.sleep(1)
+        write_remote_log(f"[ERR] PRINT FATAL ({PRINTER_SETTING}): {last_err}")
+        return False
 
 
 def process_test_print():
@@ -510,93 +511,8 @@ def process_print(order, is_reprint=False):
 
 
 # ==========================================
-# [3] 스케줄러 (업데이트, 폴링)
+# [3] 스케줄러 (폴링)
 # ==========================================
-def run_auto_updater():
-    while True:
-        try:
-            resp = fetch_with_retry(WEB_APP_URL, params={"action": "checkUpdate"}, retries=2, timeout=15)
-            if resp:
-                data = resp.json()
-                server_version = float(data.get("version", 1.0))
-                force_update = str(data.get("forceUpdate", "")).upper() == "TRUE"
-
-                if server_version > CURRENT_VERSION:
-                    update_url = data.get("url", "")
-                    expected_sha256 = data.get("sha256", "")
-
-                    # 강제 업데이트: 사용자 확인 없이 즉시 진행
-                    if force_update:
-                        write_remote_log(f"[INFO] 강제 업데이트 시작: v{server_version}")
-                    else:
-                        approved = [False]
-                        done_event = threading.Event()
-
-                        def ask():
-                            approved[0] = messagebox.askyesno(
-                                "업데이트 알림",
-                                f"새 버전 v{server_version}이 있습니다.\n지금 업데이트하시겠습니까?\n(완료 후 자동 재시작됩니다)"
-                            )
-                            done_event.set()
-
-                        if dashboard:
-                            dashboard.root.after(0, ask)
-                            done_event.wait(timeout=60)
-                            if not approved[0]:
-                                time.sleep(86400)
-                                continue
-
-                    temp_exe = os.path.join(BASE_DIR, "update_new.exe")
-                    write_local_log(f"[INFO] 업데이트 다운로드 시작: v{server_version}")
-
-                    gh_token = data.get("gh_token", "")
-                    dl_headers = {"Authorization": f"token {gh_token}"} if gh_token else {}
-
-                    sha256 = hashlib.sha256()
-                    with requests.get(update_url, headers=dl_headers, stream=True, timeout=60) as r:
-                        r.raise_for_status()
-                        with open(temp_exe, 'wb') as f:
-                            for chunk in r.iter_content(8192):
-                                f.write(chunk)
-                                sha256.update(chunk)
-
-                    if expected_sha256 and sha256.hexdigest() != expected_sha256:
-                        write_remote_log(f"[ERR] 업데이트 파일 검증 실패 (sha256 불일치), 업데이트 취소")
-                        try:
-                            os.remove(temp_exe)
-                        except Exception:
-                            pass
-                        time.sleep(86400)
-                        continue
-
-                    # 롤백용 백업: 현재 exe → .backup.exe 보존
-                    try:
-                        if os.path.exists(TARGET_EXE_PATH):
-                            shutil.copy2(TARGET_EXE_PATH, BACKUP_EXE_PATH)
-                            write_local_log(f"[INFO] 롤백 백업 생성: {BACKUP_EXE_PATH}")
-                    except Exception as e:
-                        write_local_log(f"[WARN] 백업 실패 (계속 진행): {e}")
-
-                    # BAT: 백업 보존 → 새 파일 교체 → 실행
-                    # 새 버전이 정상 시작되면 스스로 backup 삭제
-                    with open(BAT_FILE, "w", encoding="cp949") as f:
-                        f.write(
-                            f'@echo off\n'
-                            f'timeout /t 2\n'
-                            f'del "{TARGET_EXE_PATH}"\n'
-                            f'move "{temp_exe}" "{TARGET_EXE_PATH}"\n'
-                            f'start "" "{TARGET_EXE_PATH}"\n'
-                            f'del "%~f0"\n'
-                        )
-
-                    write_remote_log(f"[INFO] 업데이트 설치: v{CURRENT_VERSION} → v{server_version}")
-                    subprocess.Popen(["cmd.exe", "/c", BAT_FILE], creationflags=0x08000000)
-                    os._exit(0)
-
-        except Exception as e:
-            write_local_log(f"[ERR] 업데이터 오류: {e}")
-
-        time.sleep(86400)
 
 
 def check_printer_online():
