@@ -138,14 +138,19 @@ def set_autostart_registry(enable=True):
     try:
         reg = winreg.ConnectRegistry(None, winreg.HKEY_CURRENT_USER)
         key_obj = winreg.OpenKey(reg, key_path, 0, winreg.KEY_ALL_ACCESS)
+        # 구버전 키 항상 정리 (enable 여부 무관)
+        for old_name in ("LunchPopMaster",):
+            try:
+                winreg.DeleteValue(key_obj, old_name)
+            except FileNotFoundError:
+                pass
         if enable:
             winreg.SetValueEx(key_obj, "LunchPopAlrimi", 0, winreg.REG_SZ, f'"{target}"')
         else:
-            for name in ("LunchPopAlrimi", "LunchPopMaster"):
-                try:
-                    winreg.DeleteValue(key_obj, name)
-                except FileNotFoundError:
-                    pass
+            try:
+                winreg.DeleteValue(key_obj, "LunchPopAlrimi")
+            except FileNotFoundError:
+                pass
         winreg.CloseKey(key_obj)
     except Exception as e:
         write_local_log(f"[ERR] 레지스트리 오류: {e}")
