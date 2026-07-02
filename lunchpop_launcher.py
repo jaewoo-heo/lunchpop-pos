@@ -64,7 +64,7 @@ def set_autostart():
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
                              r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
                              0, winreg.KEY_SET_VALUE)
-        winreg.SetValueEx(key, "LunchPopAlrimi", 0, winreg.REG_SZ, launcher_path)
+        winreg.SetValueEx(key, "LunchPopAlrimi", 0, winreg.REG_SZ, f'"{launcher_path}"')
         winreg.CloseKey(key)
         log("[INFO] 자동 시작 등록 완료")
     except Exception as e:

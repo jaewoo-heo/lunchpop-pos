@@ -1,6 +1,6 @@
 """
 런치팝 알리미 Setup v1.0
-- 설치 폴더 자동 생성: %LOCALAPPDATA%\LunchPop\
+- 설치 폴더 자동 생성: C:\LunchPop\
 - Launcher.exe 다운로드
 - 바탕화면 바로가기 생성
 - Windows 시작프로그램 등록
@@ -9,7 +9,6 @@
 import os
 import sys
 import winreg
-import hashlib
 import requests
 import subprocess
 import tkinter as tk
@@ -162,7 +161,7 @@ def run_setup():
             "설치 완료",
             f"런치팝 알리미 설치가 완료되었습니다.\n\n"
             f"설치 위치: {INSTALL_DIR}\n\n"
-            f"지금 바로 실행하시겠습니까?"
+            f"확인을 누르면 바로 시작됩니다."
         )
 
         # 6. Launcher 실행
