@@ -483,8 +483,8 @@ def _build_receipt_bytes(order, is_reprint=False):
 
 
 def process_print(order, is_reprint=False):
+    ono = order.get('orderNo', '') if isinstance(order, dict) else ''
     try:
-        ono = order.get('orderNo', '')
         tag = "[재출력]" if is_reprint else "[인쇄]"
         write_remote_log(f"{tag} 시작: {ono} ({order.get('customerName', '')})")
 
