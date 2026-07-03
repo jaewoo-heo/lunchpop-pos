@@ -27,10 +27,13 @@ ctk.set_default_color_theme("blue")
 # ==========================================
 # [설정] 버전 및 URL
 # ==========================================
-CURRENT_VERSION = 4.2
+CURRENT_VERSION = 4.3
 TARGET_EXE_NAME = "LunchPop_Master.exe"
 
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzG_q6m1svwhZZny0DAz1s29qEGfVUO_gdnUOelX5QmIKPjTM8kvYjYhro_b7b_7w/exec"
+# GAS 백엔드 인증용 공유 키. 서버(버전관리 시트 E2)가 비어있으면 무시되고,
+# 값이 설정되면 이 키를 실어 보내는 클라이언트만 통과(과도기: 키 없어도 일단 허용).
+API_KEY = "7d7bcc91e8ba535b5c7d43ed4b81c9865141ad2d15a52e17"
 CHECK_INTERVAL = 60
 
 # ==========================================
@@ -46,6 +49,7 @@ LOCAL_LOG_FILE = os.path.join(BASE_DIR, "system_debug.log")
 LOCAL_LOG_OLD = os.path.join(BASE_DIR, "system_debug.old.log")
 TARGET_EXE_PATH = os.path.join(BASE_DIR, TARGET_EXE_NAME)
 BACKUP_EXE_PATH = os.path.join(BASE_DIR, "LunchPop_Master.backup.exe")
+PENDING_ACK_FILE = os.path.join(BASE_DIR, "pending_ack.json")
 
 
 def resource_path(relative_path):
@@ -104,7 +108,7 @@ def write_remote_log(text):
     write_local_log(text)
     store = CONFIG.get("storeName", "미설정매장")
     try:
-        requests.get(WEB_APP_URL, params={"action": "log", "storeName": store, "logMsg": text}, timeout=10)
+        requests.get(WEB_APP_URL, params={"action": "log", "storeName": store, "logMsg": text, "apiKey": API_KEY}, timeout=10)
     except Exception as e:
         write_local_log(f"[ERR] 원격 로그 전송 실패: {e}")
 
@@ -184,6 +188,62 @@ def save_config(config_data):
 
 
 CONFIG = load_config()
+
+
+# ==========================================
+# markDone 실패 재시도 큐 (재시작 후 중복 인쇄 방지)
+# ==========================================
+pending_ack_lock = threading.Lock()
+
+
+def load_pending_ack():
+    try:
+        if os.path.exists(PENDING_ACK_FILE):
+            with open(PENDING_ACK_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        write_local_log(f"[ERR] pending_ack 로드 실패: {e}")
+    return []
+
+
+def save_pending_ack(items):
+    try:
+        with open(PENDING_ACK_FILE, 'w', encoding='utf-8') as f:
+            json.dump(items, f, ensure_ascii=False)
+    except Exception as e:
+        write_local_log(f"[ERR] pending_ack 저장 실패: {e}")
+
+
+pending_ack = load_pending_ack()
+
+
+def queue_pending_ack(row_index, order_no):
+    with pending_ack_lock:
+        pending_ack.append({"rowIndex": row_index, "orderNo": order_no})
+        save_pending_ack(pending_ack)
+
+
+def flush_pending_ack():
+    """이전에 실패한 markDone 재시도. 재시작 직후 fetchV2보다 먼저 호출되어야
+    서버에 인쇄완료가 반영된 뒤 주문 목록을 받아 중복 인쇄를 막을 수 있음."""
+    global pending_ack
+    with pending_ack_lock:
+        if not pending_ack:
+            return
+        remaining = []
+        for item in pending_ack:
+            resp = fetch_with_retry(WEB_APP_URL, params={
+                "action": "markDone",
+                "rowIndex": item.get('rowIndex', ''),
+                "orderNo": item.get('orderNo', ''),
+                "apiKey": API_KEY
+            }, retries=1, timeout=10)
+            if not resp:
+                remaining.append(item)
+            else:
+                write_local_log(f"[INFO] 지연된 markDone 재전송 성공: {item.get('orderNo', '')}")
+        pending_ack = remaining
+        save_pending_ack(pending_ack)
 
 
 # ==========================================
@@ -376,13 +436,16 @@ def select_store_ui():
 # ==========================================
 # [2] 인쇄 핵심 로직
 # ==========================================
-def print_raw_text(receipt_bytes):
-    """프린터에 RAW 데이터 전송. _print_lock으로 동시 인쇄 방지."""
+def print_raw_text(receipt_bytes, printer_override=None):
+    """프린터에 RAW 데이터 전송. _print_lock으로 동시 인쇄 방지.
+    printer_override 지정 시 전역 PRINTER_SETTING을 건드리지 않고 해당 프린터로만 시도
+    (테스트 출력 중 실제 주문이 잘못된 프린터로 나가는 레이스 컨디션 방지)."""
     last_err = ""
+    printer = printer_override if printer_override is not None else PRINTER_SETTING
     with _print_lock:
         for attempt in range(3):
             try:
-                if PRINTER_SETTING == "기본 프린터":
+                if printer == "기본 프린터":
                     p_name = win32print.GetDefaultPrinter()
                     hPrinter = win32print.OpenPrinter(p_name)
                     try:
@@ -394,18 +457,18 @@ def print_raw_text(receipt_bytes):
                     finally:
                         win32print.ClosePrinter(hPrinter)
                     return True
-                elif PRINTER_SETTING.startswith("COM"):
-                    with serial.Serial(PRINTER_SETTING, 9600, timeout=2) as ser:
+                elif printer.startswith("COM"):
+                    with serial.Serial(printer, 9600, timeout=2) as ser:
                         ser.write(b'\x10\x04\x04')
                         status = ser.read(1)
                         if status and (ord(status) & 0x60) == 0x60:
-                            write_remote_log(f"[WARN] {PRINTER_SETTING} 용지 없음!")
+                            write_remote_log(f"[WARN] {printer} 용지 없음!")
                             return False
                         ser.write(receipt_bytes)
                         time.sleep(0.5)
                     return True
                 else:
-                    hPrinter = win32print.OpenPrinter(PRINTER_SETTING)
+                    hPrinter = win32print.OpenPrinter(printer)
                     try:
                         win32print.StartDocPrinter(hPrinter, 1, ("LunchPopOrder", None, "RAW"))
                         win32print.StartPagePrinter(hPrinter)
@@ -419,21 +482,27 @@ def print_raw_text(receipt_bytes):
                 last_err = str(e)
                 write_local_log(f"[WARN] 인쇄 시도 {attempt + 1}/3 실패: {e}")
                 time.sleep(1)
-        write_remote_log(f"[ERR] PRINT FATAL ({PRINTER_SETTING}): {last_err}")
+        write_remote_log(f"[ERR] PRINT FATAL ({printer}): {last_err}")
         return False
 
 
-def process_test_print():
+def process_test_print(printer_override=None):
     CMD_INIT = b'\x1B\x40'
     CMD_ALIGN_CENTER = b'\x1B\x61\x01'
     CMD_CUT = b'\x1D\x56\x42\x00'
     test_data = (CMD_INIT + CMD_ALIGN_CENTER +
                  "\n[ 런치팝 프린터 테스트 ]\n\n정상적으로 연결되었습니다.\n\n바쁜 일상이 좀 더 편해지도록, 런치팝\n\n\n\n\n"
-                 .encode('cp949') + CMD_CUT)
-    if print_raw_text(test_data):
+                 .encode('cp949', errors='replace') + CMD_CUT)
+    if print_raw_text(test_data, printer_override):
         messagebox.showinfo("성공", "테스트 용지가 출력되었습니다.")
     else:
-        messagebox.showerror("실패", f"프린터 연결을 확인해주세요.\n현재 설정: {PRINTER_SETTING}")
+        messagebox.showerror("실패", f"프린터 연결을 확인해주세요.\n현재 설정: {printer_override or PRINTER_SETTING}")
+
+
+def _sanitize(text):
+    """제어문자 제거 — 주문 데이터에 섞인 제어문자가 ESC/POS 명령으로
+    해석되어 캐시서랍 오픈/용지 낭비 등을 일으키는 것을 방지."""
+    return re.sub(r'[\x00-\x1f\x7f]', '', str(text))
 
 
 def _build_receipt_bytes(order, is_reprint=False):
@@ -443,40 +512,50 @@ def _build_receipt_bytes(order, is_reprint=False):
     CMD_SIZE_NORMAL = b'\x1D\x21\x00'
     CMD_CUT = b'\x1D\x56\x42\x00'
 
+    customer_name = _sanitize(order.get('customerName', ''))
+    menu_name = _sanitize(order.get('menuName', ''))
+    quantity = _sanitize(order.get('quantity', ''))
+    order_no = _sanitize(order.get('orderNo', ''))
+    delivery_time = _sanitize(order.get('deliveryTime', ''))
+
     reprint_tag = "[ 재출력 ]\n" if is_reprint else ""
     cook_time = ""
-    if order.get('deliveryTime'):
-        clean_str = str(order['deliveryTime']).replace("시 ", ":").replace("시", ":").replace("분", "")
+    if delivery_time:
+        clean_str = delivery_time.replace("시 ", ":").replace("시", ":").replace("분", "")
         match = re.search(r'(\d{1,2}):\s?(\d{2})', clean_str)
         if match:
             h, m = int(match.group(1)), int(match.group(2))
-            if "오후" in str(order['deliveryTime']) and h < 12:
+            if "오후" in delivery_time and h < 12:
                 h += 12
+            elif "오전" in delivery_time and h == 12:
+                h = 0
             dt = datetime.now().replace(hour=h, minute=m, second=0, microsecond=0) - timedelta(minutes=30)
             cook_time = f"{dt.hour:02d}시 {dt.minute:02d}분"
 
+    # 인코딩 불가 문자(이모지 등)는 실패 대신 '?'로 대체 — 특정 주문이 영구히
+    # 인쇄 불가능해지는 것(CP949 인코딩 예외로 매 폴링마다 실패 반복)을 방지
     body = (
         CMD_ALIGN_CENTER + CMD_SIZE_LARGE +
-        "LUNCH POP\n\n".encode('cp949') +
+        "LUNCH POP\n\n".encode('cp949', errors='replace') +
         CMD_SIZE_NORMAL + CMD_ALIGN_LEFT +
         (f"{reprint_tag}"
          f"------------------------------------------\n"
          f"[ {MY_STORE_NAME} ]\n"
          f"------------------------------------------\n"
-         f"주문자: {order.get('customerName', '')}\n"
-         f"주문번호: {order.get('orderNo', '')}\n"
-         f"배달예정: {order.get('deliveryTime', '')}\n"
+         f"주문자: {customer_name}\n"
+         f"주문번호: {order_no}\n"
+         f"배달예정: {delivery_time}\n"
          f"조리완료: {cook_time} (목표)\n"
-         f"------------------------------------------\n").encode('cp949')
+         f"------------------------------------------\n").encode('cp949', errors='replace')
     )
-    menu_info = f"{order.get('menuName', '')}   x{order.get('quantity', '')}\n".encode('cp949')
+    menu_info = f"{menu_name}   x{quantity}\n".encode('cp949', errors='replace')
     footer = (
         "\n------------------------------------------\n"
-        f"관리번호: {order.get('orderNo', '')[-4:]}\n"
+        f"관리번호: {order_no[-4:]}\n"
         "------------------------------------------\n"
-    ).encode('cp949') + \
+    ).encode('cp949', errors='replace') + \
         CMD_ALIGN_CENTER + \
-        "바쁜 일상이 좀 더 편해지도록, 런치팝\n\n\n\n\n".encode('cp949') + \
+        "바쁜 일상이 좀 더 편해지도록, 런치팝\n\n\n\n\n".encode('cp949', errors='replace') + \
         CMD_CUT
 
     return body + menu_info + footer
@@ -494,10 +573,12 @@ def process_print(order, is_reprint=False):
                 resp = fetch_with_retry(WEB_APP_URL, params={
                     "action": "markDone",
                     "rowIndex": order.get('rowIndex', ''),
-                    "orderNo": ono
+                    "orderNo": ono,
+                    "apiKey": API_KEY
                 }, retries=3, timeout=10)
                 if not resp:
-                    write_local_log(f"[WARN] markDone 전송 실패 (로컬 완료 처리): {ono}")
+                    write_local_log(f"[WARN] markDone 전송 실패 (재시도 큐 등록): {ono}")
+                    queue_pending_ack(order.get('rowIndex', ''), ono)
                 if ono:  # 빈 문자열은 추가 금지 (전체 주문 차단 버그 방지)
                     with orders_lock:
                         printed_ids.add(ono)
@@ -529,8 +610,10 @@ def check_printer_online():
         else:
             p_name = win32print.GetDefaultPrinter() if PRINTER_SETTING == "기본 프린터" else PRINTER_SETTING
             hPrinter = win32print.OpenPrinter(p_name)
-            info = win32print.GetPrinter(hPrinter, 2)
-            win32print.ClosePrinter(hPrinter)
+            try:
+                info = win32print.GetPrinter(hPrinter, 2)
+            finally:
+                win32print.ClosePrinter(hPrinter)
             # Status 0 = 정상, 그 외 = 오프라인/오류
             return info['Status'] == 0
     except Exception:
@@ -571,18 +654,27 @@ def run_auto_printer():
                 last_cleanup_date = today_str
                 write_remote_log("[INFO] 새벽 메모리 정리 완료")
 
+            # 이전에 실패한 markDone 재전송 (fetchV2보다 먼저 — 재시작 시 중복 인쇄 방지)
+            flush_pending_ack()
+
             resp = fetch_with_retry(WEB_APP_URL, params={
                 "action": "fetchV2",
-                "storeName": MY_STORE_NAME
+                "storeName": MY_STORE_NAME,
+                "apiKey": API_KEY
             }, retries=3, timeout=20)
 
             if resp:
-                consecutive_fail_count = 0
-                server_data = resp.json()
-                if dashboard:
-                    dashboard.root.after(0, lambda: dashboard.update_sync_status(True))
+                try:
+                    server_data = resp.json()
+                except Exception as e:
+                    write_local_log(f"[ERR] 응답 파싱 실패: {e}")
+                    server_data = None
 
                 if isinstance(server_data, list):
+                    consecutive_fail_count = 0
+                    if dashboard:
+                        dashboard.root.after(0, lambda: dashboard.update_sync_status(True))
+
                     with orders_lock:
                         for o in server_data:
                             ono = o.get('orderNo', '')
@@ -620,6 +712,13 @@ def run_auto_printer():
                         if process_print(o):
                             with orders_lock:
                                 o['isPrinted'] = True
+                else:
+                    # 서버가 200을 반환했지만 예상한 목록 형식이 아님 (할당량 초과 등) — 실패로 취급
+                    consecutive_fail_count += 1
+                    write_local_log(f"[WARN] fetchV2 응답 형식 이상: {server_data}")
+                    if dashboard:
+                        c = consecutive_fail_count
+                        dashboard.root.after(0, lambda _c=c: dashboard.update_sync_status(False, _c))
             else:
                 consecutive_fail_count += 1
                 if dashboard:
@@ -991,17 +1090,13 @@ class SmartDashboard:
         cb.set(PRINTER_SETTING)
 
         def do_test():
-            global PRINTER_SETTING
             btn_test.configure(text="출력 중...", state="disabled")
-            _orig = PRINTER_SETTING
-            PRINTER_SETTING = cb.get()
+            test_printer = cb.get()
 
             def _run():
                 try:
-                    process_test_print()
+                    process_test_print(test_printer)
                 finally:
-                    global PRINTER_SETTING
-                    PRINTER_SETTING = _orig
                     try:
                         win.after(0, lambda: btn_test.configure(text="테스트 출력", state="normal"))
                     except Exception:

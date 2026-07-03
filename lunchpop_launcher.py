@@ -11,11 +11,12 @@ import sys
 import os
 import shutil
 import winreg
+import ctypes
 import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime
 
-LAUNCHER_VERSION = "1.0"
+LAUNCHER_VERSION = "1.1"
 GAS_URL = "https://script.google.com/macros/s/AKfycbzG_q6m1svwhZZny0DAz1s29qEGfVUO_gdnUOelX5QmIKPjTM8kvYjYhro_b7b_7w/exec"
 MASTER_EXE_NAME = "LunchPop_Master.exe"
 
@@ -55,6 +56,18 @@ def sha256_of(path):
         for chunk in iter(lambda: f.read(65536), b''):
             h.update(chunk)
     return h.hexdigest().lower()
+
+
+# ── Master 실행 여부 확인 (중복 실행/파일 잠금 방지) ──────────
+def is_master_running():
+    try:
+        out = subprocess.check_output(
+            ['tasklist', '/FI', f'IMAGENAME eq {MASTER_EXE_NAME}'],
+            creationflags=subprocess.CREATE_NO_WINDOW, text=True, timeout=5)
+        return MASTER_EXE_NAME.lower() in out.lower()
+    except Exception as e:
+        log(f"[WARN] 프로세스 확인 실패: {e}")
+        return False
 
 
 # ── 자동 시작 등록 ─────────────────────────────────────────
@@ -99,12 +112,15 @@ def check_and_update():
     try:
         resp = requests.get(GAS_URL, params={"action": "checkUpdate"}, timeout=15)
         data = resp.json()
+        if not isinstance(data, dict):
+            log(f"[WARN] 업데이트 확인 응답 형식 이상: {data!r}")
+            return
     except Exception as e:
         log(f"[WARN] 업데이트 확인 실패 (네트워크): {e}")
         return
 
-    expected_sha256 = data.get("sha256", "").lower().strip()
-    download_url    = data.get("url", "").strip()
+    expected_sha256 = str(data.get("sha256", "")).lower().strip()
+    download_url    = str(data.get("url", "")).strip()
 
     if not expected_sha256 or not download_url:
         log("[INFO] 버전 정보 없음 — 업데이트 건너뜀")
@@ -113,6 +129,12 @@ def check_and_update():
     current_sha256 = sha256_of(MASTER_PATH)
     if current_sha256 == expected_sha256:
         log("[INFO] 최신 버전 확인됨 — 업데이트 불필요")
+        return
+
+    # Master가 이미 실행 중이면 exe 교체 시 파일 잠금으로 실패함 — 이번 회차는 건너뛰고
+    # 다음 재시작(PC 재부팅) 때 다시 시도. 실행 중인 주문 처리를 방해하지 않기 위함.
+    if is_master_running():
+        log("[WARN] Master 실행 중 — 이번 업데이트는 건너뜀 (다음 재시작 시 재시도)")
         return
 
     log(f"[INFO] 업데이트 감지 — 다운로드 시작")
@@ -162,10 +184,25 @@ def check_and_update():
                 os.remove(TEMP_PATH)
             except Exception:
                 pass
+        # 사용자에게 알림 — 로그 파일만 남기면 아무도 원인을 모르고 계속 구버전 사용
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showwarning(
+                "런치팝 업데이트 실패",
+                f"새 버전 적용에 실패했습니다. 기존 버전으로 계속 실행합니다.\n"
+                f"문제가 반복되면 관리자에게 문의하세요.\n\n오류: {e}")
+            root.destroy()
+        except Exception:
+            pass
 
 
 # ── Master 실행 ───────────────────────────────────────────
 def launch_master():
+    if is_master_running():
+        log("[INFO] Master 이미 실행 중 — 중복 실행 방지를 위해 새로 띄우지 않음")
+        return
+
     if not os.path.exists(MASTER_PATH):
         log("[ERR] LunchPop_Master.exe 없음")
         root = tk.Tk()
@@ -183,8 +220,18 @@ def launch_master():
 
 # ── 진입점 ────────────────────────────────────────────────
 if __name__ == '__main__':
+    # 중복 실행 방지 (자동시작 + 수동 재실행이 겹쳐서 임시파일이 꼬이는 것 방지)
+    _mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "LunchPopLauncher_SingleInstance")
+    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        log("[INFO] Launcher 이미 실행 중 — 종료")
+        sys.exit(0)
+
     log(f"=== Launcher v{LAUNCHER_VERSION} 시작 ===")
     set_autostart()
-    check_and_update()
+    try:
+        check_and_update()
+    except Exception as e:
+        # 업데이트 로직에서 예상 못한 예외가 나도 Master는 반드시 실행되어야 함
+        log(f"[ERR] check_and_update 예외: {e}")
     launch_master()
     log("=== Launcher 종료 ===")
