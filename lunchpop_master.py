@@ -207,11 +207,20 @@ def load_pending_ack():
 
 
 def save_pending_ack(items):
+    """원자적 저장 - save_config와 동일하게 임시 파일 쓰기 후 rename.
+    직접 덮어쓰다 중간에 죽으면(강제종료/정전) 파일이 손상되어 재시도 큐
+    전체를 잃을 수 있어, 24시간 구동되는 POS 특성상 반드시 필요."""
+    tmp_file = PENDING_ACK_FILE + ".tmp"
     try:
-        with open(PENDING_ACK_FILE, 'w', encoding='utf-8') as f:
+        with open(tmp_file, 'w', encoding='utf-8') as f:
             json.dump(items, f, ensure_ascii=False)
+        shutil.move(tmp_file, PENDING_ACK_FILE)
     except Exception as e:
         write_local_log(f"[ERR] pending_ack 저장 실패: {e}")
+        try:
+            os.remove(tmp_file)
+        except Exception:
+            pass
 
 
 pending_ack = load_pending_ack()
@@ -244,19 +253,26 @@ def send_mark_done(row_index, order_no, retries=3):
 
 def flush_pending_ack():
     """이전에 실패한 markDone 재시도. 재시작 직후 fetchV2보다 먼저 호출되어야
-    서버에 인쇄완료가 반영된 뒤 주문 목록을 받아 중복 인쇄를 막을 수 있음."""
-    global pending_ack
+    서버에 인쇄완료가 반영된 뒤 주문 목록을 받아 중복 인쇄를 막을 수 있음.
+    네트워크 I/O(최대 수 초 x 건수) 중에는 락을 놓아서, 그 사이 재출력
+    스레드가 queue_pending_ack로 새 항목을 넣는 것을 막지 않도록 함."""
     with pending_ack_lock:
-        if not pending_ack:
-            return
-        remaining = []
-        for item in pending_ack:
-            if send_mark_done(item.get('rowIndex', ''), item.get('orderNo', ''), retries=1):
-                write_local_log(f"[INFO] 지연된 markDone 재전송 성공: {item.get('orderNo', '')}")
-            else:
-                remaining.append(item)
-        pending_ack = remaining
-        save_pending_ack(pending_ack)
+        items = list(pending_ack)
+    if not items:
+        return
+
+    succeeded = []
+    for item in items:
+        if send_mark_done(item.get('rowIndex', ''), item.get('orderNo', ''), retries=1):
+            write_local_log(f"[INFO] 지연된 markDone 재전송 성공: {item.get('orderNo', '')}")
+            succeeded.append(item)
+
+    if succeeded:
+        with pending_ack_lock:
+            for s in succeeded:
+                if s in pending_ack:
+                    pending_ack.remove(s)
+            save_pending_ack(pending_ack)
 
 
 # ==========================================
@@ -721,6 +737,16 @@ def run_auto_printer():
                     alerted_ids &= current_ids
 
                     for o in pending:
+                        # 이 폴링 주기의 pending 스냅샷을 만든 뒤, 같은 주문이
+                        # 주문리스트의 "재출력" 버튼으로 이미 처리됐을 수 있음
+                        # (재출력 스레드가 성공 시 printed_ids에 즉시 추가함).
+                        # 실제로 인쇄를 보내기 직전에 다시 확인해서 중복 인쇄 방지.
+                        with orders_lock:
+                            already_acked = o.get('orderNo', '') in printed_ids
+                        if already_acked:
+                            with orders_lock:
+                                o['isPrinted'] = True
+                            continue
                         if process_print(o):
                             with orders_lock:
                                 o['isPrinted'] = True
