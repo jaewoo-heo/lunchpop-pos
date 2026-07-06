@@ -207,19 +207,30 @@ function createJSON(data) {
 // ── [이벤트] P2 날짜 변경 시 K/L열 초기화 ──
 // 단일 셀 수정뿐 아니라, P2를 포함하는 행/범위 붙여넣기 시에도 감지되도록 범위 겹침으로 판정
 function onEdit(e) {
-  var sheet = e.source.getActiveSheet();
-  if (sheet.getName() !== "data") return;
+  try {
+    var sheet = e.source.getActiveSheet();
+    if (sheet.getName() !== "data") return;
 
-  var r = e.range.getRow(), nr = e.range.getNumRows();
-  var c = e.range.getColumn(), nc = e.range.getNumColumns();
-  var rowsCoverRow2 = (r <= 2 && r + nr > 2);
-  var colsCoverCol16 = (c <= 16 && c + nc > 16);
+    var r = e.range.getRow(), nr = e.range.getNumRows();
+    var c = e.range.getColumn(), nc = e.range.getNumColumns();
+    var rowsCoverRow2 = (r <= 2 && r + nr > 2);
+    var colsCoverCol16 = (c <= 16 && c + nc > 16);
 
-  if (rowsCoverRow2 && colsCoverCol16) {
-    var lastRow = sheet.getLastRow();
-    if (lastRow >= 2) {
-      sheet.getRange(2, 11, lastRow - 1, 1).clearContent();
-      sheet.getRange(2, 12, lastRow - 1, 1).clearContent();
+    if (rowsCoverRow2 && colsCoverCol16) {
+      var lastRow = sheet.getLastRow();
+      if (lastRow >= 2) {
+        sheet.getRange(2, 11, lastRow - 1, 1).clearContent();
+        sheet.getRange(2, 12, lastRow - 1, 1).clearContent();
+      }
     }
+  } catch (err) {
+    // 트리거 실패는 사용자에게 보이지 않으므로 최소한 로그 시트에 흔적을 남김
+    try {
+      var logSheet = e.source.getSheetByName("log");
+      if (logSheet) {
+        var t = Utilities.formatDate(new Date(), "GMT+9", "yyyy/MM/dd HH:mm:ss");
+        logSheet.appendRow([t, "시스템", "[ERR] onEdit 트리거 실패: " + String(err)]);
+      }
+    } catch (e2) { /* 로그 기록조차 실패하면 포기 */ }
   }
 }
