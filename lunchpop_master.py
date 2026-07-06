@@ -223,6 +223,25 @@ def queue_pending_ack(row_index, order_no):
         save_pending_ack(pending_ack)
 
 
+def send_mark_done(row_index, order_no, retries=3):
+    """markDone 요청 후 실제 status=='success'까지 확인해야 성공으로 판정.
+    GAS는 unauthorized/invalid rowIndex 등 논리적 실패도 HTTP 200으로 반환하므로
+    resp가 truthy(HTTP 2xx)라는 것만으로는 서버가 실제로 처리했는지 알 수 없음."""
+    resp = fetch_with_retry(WEB_APP_URL, params={
+        "action": "markDone",
+        "rowIndex": row_index,
+        "orderNo": order_no,
+        "apiKey": API_KEY
+    }, retries=retries, timeout=10)
+    if not resp:
+        return False
+    try:
+        data = resp.json()
+    except Exception:
+        return False
+    return isinstance(data, dict) and data.get("status") == "success"
+
+
 def flush_pending_ack():
     """이전에 실패한 markDone 재시도. 재시작 직후 fetchV2보다 먼저 호출되어야
     서버에 인쇄완료가 반영된 뒤 주문 목록을 받아 중복 인쇄를 막을 수 있음."""
@@ -232,16 +251,10 @@ def flush_pending_ack():
             return
         remaining = []
         for item in pending_ack:
-            resp = fetch_with_retry(WEB_APP_URL, params={
-                "action": "markDone",
-                "rowIndex": item.get('rowIndex', ''),
-                "orderNo": item.get('orderNo', ''),
-                "apiKey": API_KEY
-            }, retries=1, timeout=10)
-            if not resp:
-                remaining.append(item)
-            else:
+            if send_mark_done(item.get('rowIndex', ''), item.get('orderNo', ''), retries=1):
                 write_local_log(f"[INFO] 지연된 markDone 재전송 성공: {item.get('orderNo', '')}")
+            else:
+                remaining.append(item)
         pending_ack = remaining
         save_pending_ack(pending_ack)
 
@@ -569,14 +582,13 @@ def process_print(order, is_reprint=False):
 
         receipt_bytes = _build_receipt_bytes(order, is_reprint)
         if print_raw_text(receipt_bytes):
-            if not is_reprint:
-                resp = fetch_with_retry(WEB_APP_URL, params={
-                    "action": "markDone",
-                    "rowIndex": order.get('rowIndex', ''),
-                    "orderNo": ono,
-                    "apiKey": API_KEY
-                }, retries=3, timeout=10)
-                if not resp:
+            # 재출력이라도 서버에 아직 "인쇄완료"로 기록되지 않은 주문(자동인쇄 실패 후
+            # 주문리스트에서 수동으로 재출력하는 경우)은 사실상 첫 성공 인쇄이므로
+            # markDone을 보내야 함. 이미 인쇄완료된 주문의 순수 사본 재출력만 건너뜀.
+            # (건너뛰지 않으면: 다음 폴링에서 서버가 여전히 미인쇄로 응답 → 자동으로 또 인쇄됨)
+            should_ack = (not is_reprint) or (not order.get('isPrinted', False))
+            if should_ack:
+                if not send_mark_done(order.get('rowIndex', ''), ono):
                     write_local_log(f"[WARN] markDone 전송 실패 (재시도 큐 등록): {ono}")
                     queue_pending_ack(order.get('rowIndex', ''), ono)
                 if ono:  # 빈 문자열은 추가 금지 (전체 주문 차단 버그 방지)
