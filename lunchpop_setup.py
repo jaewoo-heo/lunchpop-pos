@@ -1,5 +1,5 @@
 """
-런치팝 알리미 Setup v1.0
+런치팝 알리미 Setup v1.1
 - 설치 폴더 자동 생성: C:\LunchPop\
 - Launcher.exe 다운로드
 - 바탕화면 바로가기 생성

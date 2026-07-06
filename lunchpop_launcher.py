@@ -1,5 +1,5 @@
 """
-런치팝 Launcher v1.0
+런치팝 Launcher v1.1
 - GAS에서 버전 확인 → SHA256 비교 → 다를 때만 Master 업데이트
 - Master 실행 후 종료 (자기 자신은 교체 안 함)
 - Windows 시작 프로그램 자동 등록
@@ -28,6 +28,11 @@ MASTER_PATH  = os.path.join(BASE_DIR, MASTER_EXE_NAME)
 BACKUP_PATH  = os.path.join(BASE_DIR, "LunchPop_Master.backup.exe")
 TEMP_PATH    = os.path.join(BASE_DIR, "LunchPop_Master.update.exe")
 LOG_FILE     = os.path.join(BASE_DIR, "launcher_debug.log")
+MIN_VALID_EXE_BYTES = 500 * 1024  # 정상 빌드본은 수 MB — 이보다 작으면 손상된 파일로 간주
+
+
+def _is_valid_exe(path):
+    return os.path.exists(path) and os.path.getsize(path) >= MIN_VALID_EXE_BYTES
 
 
 # ── 로그 (5MB 초과 시 로테이션) ──────────────────────────
@@ -61,9 +66,12 @@ def sha256_of(path):
 # ── Master 실행 여부 확인 (중복 실행/파일 잠금 방지) ──────────
 def is_master_running():
     try:
-        out = subprocess.check_output(
+        # tasklist 출력은 콘솔 OEM 코드페이지 기준이라 text=True(로케일 기본 디코딩)는
+        # 깨질 수 있음 — 바이트로 받아서 한글 코드페이지로 관대하게 디코딩
+        raw = subprocess.check_output(
             ['tasklist', '/FI', f'IMAGENAME eq {MASTER_EXE_NAME}'],
-            creationflags=subprocess.CREATE_NO_WINDOW, text=True, timeout=5)
+            creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
+        out = raw.decode('cp949', errors='ignore')
         return MASTER_EXE_NAME.lower() in out.lower()
     except Exception as e:
         log(f"[WARN] 프로세스 확인 실패: {e}")
@@ -167,7 +175,10 @@ def check_and_update():
 
         if os.path.exists(MASTER_PATH):
             shutil.copy2(MASTER_PATH, BACKUP_PATH)
-        shutil.move(TEMP_PATH, MASTER_PATH)
+        # shutil.move는 대상이 이미 있으면 rename 대신 copy+삭제로 폴백해서
+        # 원자적이지 않음 (중간에 죽으면 MASTER_PATH가 손상된 채로 남을 수 있음).
+        # os.replace는 Windows에서도 MoveFileExW로 원자적 교체를 보장함.
+        os.replace(TEMP_PATH, MASTER_PATH)
 
         log("[INFO] 업데이트 완료")
         win.destroy()
@@ -203,19 +214,38 @@ def launch_master():
         log("[INFO] Master 이미 실행 중 — 중복 실행 방지를 위해 새로 띄우지 않음")
         return
 
-    if not os.path.exists(MASTER_PATH):
-        log("[ERR] LunchPop_Master.exe 없음")
+    if not _is_valid_exe(MASTER_PATH):
+        # 업데이트 교체 중 문제가 생겨 손상/누락됐을 가능성 — 백업본이 정상이면 자동 복구
+        if _is_valid_exe(BACKUP_PATH):
+            log("[WARN] Master.exe 손상/누락 감지 — 백업본으로 자동 복구 시도")
+            try:
+                shutil.copy2(BACKUP_PATH, MASTER_PATH)
+            except Exception as e:
+                log(f"[ERR] 백업 복구 실패: {e}")
+
+    if not _is_valid_exe(MASTER_PATH):
+        log("[ERR] LunchPop_Master.exe 없음 또는 손상됨")
         root = tk.Tk()
         root.withdraw()
         messagebox.showerror(
             "런치팝 오류",
-            f"LunchPop_Master.exe를 찾을 수 없습니다.\n"
+            f"LunchPop_Master.exe를 찾을 수 없거나 손상되었습니다.\n"
             f"폴더를 확인하거나 관리자에게 문의하세요.\n\n경로: {BASE_DIR}")
         root.destroy()
         return
 
     log(f"[INFO] Master 실행: {MASTER_PATH}")
-    subprocess.Popen([MASTER_PATH])
+    try:
+        subprocess.Popen([MASTER_PATH])
+    except Exception as e:
+        log(f"[ERR] Master 실행 실패: {e}")
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror("런치팝 오류", f"Master 실행에 실패했습니다.\n\n오류: {e}")
+            root.destroy()
+        except Exception:
+            pass
 
 
 # ── 진입점 ────────────────────────────────────────────────
@@ -233,5 +263,8 @@ if __name__ == '__main__':
     except Exception as e:
         # 업데이트 로직에서 예상 못한 예외가 나도 Master는 반드시 실행되어야 함
         log(f"[ERR] check_and_update 예외: {e}")
-    launch_master()
+    try:
+        launch_master()
+    except Exception as e:
+        log(f"[ERR] launch_master 예외: {e}")
     log("=== Launcher 종료 ===")
