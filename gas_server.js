@@ -7,7 +7,7 @@
 function doGet(e) {
   try {
     var action = e.parameter.action;
-    var storeName = e.parameter.storeName || "시스템";
+    var storeName = String(e.parameter.storeName || "시스템").trim();
     var logMsg = e.parameter.logMsg;
     var apiKey = e.parameter.apiKey || "";
 
@@ -65,7 +65,7 @@ function doGet(e) {
           if (sData[i][0] !== "") storeList.push(sData[i][0]);
         }
       }
-      return createJSON(storeList);
+      return createJSON(storeList.length === 0 ? ["매장목록 없음"] : storeList);
     }
 
     // ── [액션 3] 로그 기록 ──
@@ -91,14 +91,9 @@ function doGet(e) {
       var rowIndex = parseInt(e.parameter.rowIndex || "0", 10);
       var orderNo  = e.parameter.orderNo || "";
       var lastRowMD = sheet.getLastRow();
+      var rowIndexValid = (!isNaN(rowIndex) && rowIndex >= 2 && rowIndex <= lastRowMD);
 
-      if (rowIndex >= 2) {
-        if (isNaN(rowIndex) || rowIndex > lastRowMD) {
-          return createJSON({ status: "error", msg: "invalid rowIndex" });
-        }
-        sheet.getRange(rowIndex, 12).setValue("TRUE");
-        return createJSON({ status: "success" });
-      } else if (orderNo) {
+      function markByOrderNo() {
         if (lastRowMD < 2) return createJSON({ status: "not_found" });
         var allData = sheet.getRange(2, 8, lastRowMD - 1, 1).getValues();
         for (var i = 0; i < allData.length; i++) {
@@ -108,6 +103,17 @@ function doGet(e) {
           }
         }
         return createJSON({ status: "not_found" });
+      }
+
+      if (rowIndexValid) {
+        sheet.getRange(rowIndex, 12).setValue("TRUE");
+        return createJSON({ status: "success" });
+      } else if (orderNo) {
+        // rowIndex가 없거나(구버전 클라이언트) 행 삭제/이동 등으로 더 이상 유효하지 않으면
+        // orderNo 선형 탐색으로 폴백 (요청에 항상 둘 다 실려오므로 여기서 복구 가능)
+        return markByOrderNo();
+      } else if (rowIndex >= 2) {
+        return createJSON({ status: "error", msg: "invalid rowIndex" });
       }
 
       return createJSON({ status: "error", msg: "rowIndex 또는 orderNo 필요" });
@@ -140,7 +146,8 @@ function doGet(e) {
         var row = values[j];
         var dateMatch = (refDate === "") || (normDate(row[6]) === refNorm);
         // 매장명은 완전일치만 허용 (부분일치 시 "김밥"이 "옆집김밥"에도 매칭되는 문제 방지)
-        if (row[4] === storeName && dateMatch) {
+        // 앞뒤 공백 차이로 매장 전체 주문이 누락되지 않도록 양쪽 다 trim 후 비교
+        if (String(row[4]).trim() === storeName && dateMatch) {
           result.push({
             rowIndex:     j + 2,          // markDone O(1)용 행 번호
             customerName: row[1],
@@ -171,8 +178,8 @@ function doGet(e) {
 
       for (var j2 = 0; j2 < values2.length; j2++) {
         var row2 = values2[j2];
-        // 기존 방식: K열 TRUE이고 L열 비어있는 것만 전달, 매장명은 완전일치
-        if (row2[4] === storeName && row2[10] === "TRUE" && row2[11] !== "TRUE") {
+        // 기존 방식: K열 TRUE이고 L열 비어있는 것만 전달, 매장명은 완전일치(trim 후 비교)
+        if (String(row2[4]).trim() === storeName && row2[10] === "TRUE" && row2[11] !== "TRUE") {
           result2.push({
             customerName: row2[1], menuName: row2[2], quantity: row2[3],
             storeName:    row2[4], address: row2[9], resDate: row2[6],

@@ -126,8 +126,8 @@ def download_launcher(win):
         if downloaded < MIN_VALID_EXE_BYTES:
             raise ValueError(f"다운로드된 파일이 너무 작습니다 ({downloaded} bytes) — 손상되었거나 중단됨")
 
-        if os.path.exists(LAUNCHER_PATH):
-            os.remove(LAUNCHER_PATH)
+        # os.replace()는 Windows에서도 대상 파일을 원자적으로 덮어쓰므로
+        # 미리 삭제할 필요 없음 (미리 지우면 그 사이 파일이 없는 순간이 생김)
         os.replace(LAUNCHER_TEMP_PATH, LAUNCHER_PATH)
         return True
     except Exception as e:
