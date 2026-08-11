@@ -306,7 +306,7 @@ def select_store_ui():
     global PRINTER_SETTING, MY_STORE_NAME
 
     root = ctk.CTk()
-    root.title(f"런치팝 초기 설정 (v{CURRENT_VERSION})")
+    root.title(f"KitchenPic 초기 설정 (v{CURRENT_VERSION})")
     root.attributes('-topmost', True)
     root.resizable(False, False)
     _set_icon(root)
@@ -339,7 +339,7 @@ def select_store_ui():
     header = ctk.CTkFrame(root, fg_color="#e74c3c", corner_radius=0, height=90)
     header.pack(fill="x")
     header.pack_propagate(False)
-    ctk.CTkLabel(header, text="🍱  런치팝 POS",
+    ctk.CTkLabel(header, text="🍱  KitchenPic POS",
                   font=ctk.CTkFont("맑은 고딕", 22, "bold"),
                   text_color="white").pack(pady=(18, 0))
     ctk.CTkLabel(header, text=f"v{CURRENT_VERSION}  —  매장 초기 설정",
@@ -520,7 +520,7 @@ def process_test_print(printer_override=None):
     CMD_ALIGN_CENTER = b'\x1B\x61\x01'
     CMD_CUT = b'\x1D\x56\x42\x00'
     test_data = (CMD_INIT + CMD_ALIGN_CENTER +
-                 "\n[ 런치팝 프린터 테스트 ]\n\n정상적으로 연결되었습니다.\n\n바쁜 일상이 좀 더 편해지도록, 런치팝\n\n\n\n\n"
+                 "\n[ KitchenPic 프린터 테스트 ]\n\n정상적으로 연결되었습니다.\n\n바쁜 일상이 좀 더 편해지도록, KitchenPic\n\n\n\n\n"
                  .encode('cp949', errors='replace') + CMD_CUT)
     if print_raw_text(test_data, printer_override):
         messagebox.showinfo("성공", "테스트 용지가 출력되었습니다.")
@@ -565,7 +565,7 @@ def _build_receipt_bytes(order, is_reprint=False):
     # 인쇄 불가능해지는 것(CP949 인코딩 예외로 매 폴링마다 실패 반복)을 방지
     body = (
         CMD_ALIGN_CENTER + CMD_SIZE_LARGE +
-        "LUNCH POP\n\n".encode('cp949', errors='replace') +
+        "KITCHENPIC\n\n".encode('cp949', errors='replace') +
         CMD_SIZE_NORMAL + CMD_ALIGN_LEFT +
         (f"{reprint_tag}"
          f"------------------------------------------\n"
@@ -584,7 +584,7 @@ def _build_receipt_bytes(order, is_reprint=False):
         "------------------------------------------\n"
     ).encode('cp949', errors='replace') + \
         CMD_ALIGN_CENTER + \
-        "바쁜 일상이 좀 더 편해지도록, 런치팝\n\n\n\n\n".encode('cp949', errors='replace') + \
+        "바쁜 일상이 좀 더 편해지도록, KitchenPic\n\n\n\n\n".encode('cp949', errors='replace') + \
         CMD_CUT
 
     return body + menu_info + footer
@@ -970,7 +970,7 @@ class SmartDashboard:
 
     def open_settings(self):
         win = ctk.CTkToplevel(self.root)
-        win.title("런치팝 설정")
+        win.title("KitchenPic 설정")
         win.attributes("-topmost", True)
         win.grab_set()
         win.resizable(False, False)
@@ -1001,7 +1001,7 @@ class SmartDashboard:
         header = ctk.CTkFrame(win, fg_color="#e74c3c", corner_radius=0, height=58)
         header.pack(fill="x")
         header.pack_propagate(False)
-        ctk.CTkLabel(header, text="런치팝 설정",
+        ctk.CTkLabel(header, text="KitchenPic 설정",
                       font=ctk.CTkFont("맑은 고딕", 16, "bold"),
                       text_color="white").pack(side="left", padx=20, pady=16)
         ctk.CTkLabel(header, text=f"v{CURRENT_VERSION}",
@@ -1366,7 +1366,7 @@ if __name__ == '__main__':
         if ctypes.windll.kernel32.GetLastError() == 183:
             try:
                 root_tmp = tk.Tk(); root_tmp.withdraw()
-                messagebox.showwarning("런치팝 알리미", "프로그램이 이미 실행 중입니다.")
+                messagebox.showwarning("KitchenPic 알리미", "프로그램이 이미 실행 중입니다.")
                 root_tmp.destroy()
             except Exception:
                 pass
@@ -1413,7 +1413,7 @@ if __name__ == '__main__':
                               default=True),
             pystray.MenuItem('프로그램 종료', lambda *_: os._exit(0))
         )
-        pystray.Icon("LunchPop", img, f"런치팝 알리미 — {MY_STORE_NAME}", m).run()
+        pystray.Icon("LunchPop", img, f"KitchenPic 알리미 — {MY_STORE_NAME}", m).run()
 
     threading.Thread(target=setup_tray, daemon=True).start()
     dashboard.root.mainloop()

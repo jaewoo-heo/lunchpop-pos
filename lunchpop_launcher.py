@@ -95,7 +95,7 @@ def set_autostart():
 # ── 업데이트 진행 창 ──────────────────────────────────────
 def make_progress_window():
     win = tk.Tk()
-    win.title("런치팝 업데이트")
+    win.title("KitchenPic 업데이트")
     win.geometry("380x130")
     win.resizable(False, False)
     win.attributes("-topmost", True)
@@ -103,7 +103,7 @@ def make_progress_window():
     sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
     win.geometry(f"380x130+{(sw-380)//2}+{(sh-130)//2}")
 
-    tk.Label(win, text="🍱  런치팝 업데이트 중...",
+    tk.Label(win, text="🍱  KitchenPic 업데이트 중...",
              font=("맑은 고딕", 12, "bold")).pack(pady=(18, 6))
     pb = ttk.Progressbar(win, mode='indeterminate', length=320)
     pb.pack(pady=4)
@@ -200,7 +200,7 @@ def check_and_update():
             root = tk.Tk()
             root.withdraw()
             messagebox.showwarning(
-                "런치팝 업데이트 실패",
+                "KitchenPic 업데이트 실패",
                 f"새 버전 적용에 실패했습니다. 기존 버전으로 계속 실행합니다.\n"
                 f"문제가 반복되면 관리자에게 문의하세요.\n\n오류: {e}")
             root.destroy()
@@ -228,7 +228,7 @@ def launch_master():
         root = tk.Tk()
         root.withdraw()
         messagebox.showerror(
-            "런치팝 오류",
+            "KitchenPic 오류",
             f"LunchPop_Master.exe를 찾을 수 없거나 손상되었습니다.\n"
             f"폴더를 확인하거나 관리자에게 문의하세요.\n\n경로: {BASE_DIR}")
         root.destroy()
@@ -242,7 +242,7 @@ def launch_master():
         try:
             root = tk.Tk()
             root.withdraw()
-            messagebox.showerror("런치팝 오류", f"Master 실행에 실패했습니다.\n\n오류: {e}")
+            messagebox.showerror("KitchenPic 오류", f"Master 실행에 실패했습니다.\n\n오류: {e}")
             root.destroy()
         except Exception:
             pass

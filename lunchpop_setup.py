@@ -21,7 +21,7 @@ LAUNCHER_NAME = "LunchPop_Launcher.exe"
 LAUNCHER_URL  = "https://github.com/jaewoo-heo/lunchpop-pos/releases/latest/download/LunchPop_Launcher.exe"
 LAUNCHER_PATH = os.path.join(INSTALL_DIR, LAUNCHER_NAME)
 LAUNCHER_TEMP_PATH = os.path.join(INSTALL_DIR, "LunchPop_Launcher.download.tmp")
-SHORTCUT_NAME = "런치팝 알리미.lnk"
+SHORTCUT_NAME = "KitchenPic 알리미.lnk"
 MIN_VALID_EXE_BYTES = 500 * 1024  # 정상 빌드본은 수 MB — 이보다 작으면 손상된 파일로 간주
 
 
@@ -29,7 +29,7 @@ MIN_VALID_EXE_BYTES = 500 * 1024  # 정상 빌드본은 수 MB — 이보다 작
 class SetupWindow:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("런치팝 알리미 설치")
+        self.root.title("KitchenPic 알리미 설치")
         self.root.geometry("420x220")
         self.root.resizable(False, False)
         self.root.attributes("-topmost", True)
@@ -38,7 +38,7 @@ class SetupWindow:
         sh = self.root.winfo_screenheight()
         self.root.geometry(f"420x220+{(sw-420)//2}+{(sh-220)//2}")
 
-        tk.Label(self.root, text="🍱  런치팝 알리미 설치 중",
+        tk.Label(self.root, text="🍱  KitchenPic 알리미 설치 중",
                  font=("맑은 고딕", 14, "bold")).pack(pady=(24, 6))
 
         self.status_var = tk.StringVar(value="설치를 시작합니다...")
@@ -83,7 +83,7 @@ def create_shortcut(target_path):
         sc.Targetpath = target_path
         sc.WorkingDirectory = os.path.dirname(target_path)
         sc.IconLocation = target_path
-        sc.Description = "런치팝 알리미"
+        sc.Description = "KitchenPic 알리미"
         sc.save()
         return True
     except Exception as e:
@@ -183,7 +183,7 @@ def run_setup():
                 failed.append("윈도우 자동시작 등록")
             messagebox.showwarning(
                 "일부 설정 실패",
-                f"런치팝은 설치되었지만 다음 항목이 실패했습니다:\n"
+                f"KitchenPic은 설치되었지만 다음 항목이 실패했습니다:\n"
                 f"- {', '.join(failed)}\n\n"
                 f"{'자동시작이 등록되지 않으면 PC를 켜도 주문을 받지 못합니다. ' if not autostart_ok else ''}"
                 f"관리자에게 문의하거나 설치를 다시 시도해주세요."
@@ -191,7 +191,7 @@ def run_setup():
         else:
             messagebox.showinfo(
                 "설치 완료",
-                f"런치팝 알리미 설치가 완료되었습니다.\n\n"
+                f"KitchenPic 알리미 설치가 완료되었습니다.\n\n"
                 f"설치 위치: {INSTALL_DIR}\n\n"
                 f"확인을 누르면 바로 시작됩니다."
             )
@@ -217,7 +217,7 @@ if __name__ == "__main__":
         root = tk.Tk()
         root.withdraw()
         answer = messagebox.askyesno(
-            "런치팝 알리미",
+            "KitchenPic 알리미",
             f"이미 설치되어 있습니다.\n\n"
             f"설치 위치: {INSTALL_DIR}\n\n"
             f"재설치하시겠습니까?"
