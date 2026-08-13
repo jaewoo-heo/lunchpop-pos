@@ -27,7 +27,7 @@ ctk.set_default_color_theme("blue")
 # ==========================================
 # [설정] 버전 및 URL
 # ==========================================
-CURRENT_VERSION = 4.3
+CURRENT_VERSION = 4.4
 TARGET_EXE_NAME = "LunchPop_Master.exe"
 
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzG_q6m1svwhZZny0DAz1s29qEGfVUO_gdnUOelX5QmIKPjTM8kvYjYhro_b7b_7w/exec"
