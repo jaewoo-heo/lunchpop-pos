@@ -1,0 +1,46 @@
+name: Build Backup Tool
+
+# 시설 관리실용 백업 출력 도구만 따로 빌드해서 기존 릴리즈에 추가.
+# 새 태그(새 Master 빌드) 없이 백업 도구만 갱신하고 싶을 때 Actions 탭에서 수동 실행.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '백업 도구 exe를 첨부할 기존 릴리즈 태그 (예: v4.6)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 의존성 설치
+        run: pip install pyinstaller requests pywin32 pyserial customtkinter
+
+      - name: Backup 빌드
+        shell: cmd
+        run: >
+          python -m PyInstaller
+          --onefile --noconsole
+          --name "LunchPop_Backup"
+          --icon "assets/logo.ico"
+          --hidden-import=win32print
+          --hidden-import=pywintypes
+          lunchpop_backup.py
+
+      - name: 릴리즈에 첨부
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ inputs.tag }}" dist/LunchPop_Backup.exe --clobber --repo "${{ github.repository }}"
