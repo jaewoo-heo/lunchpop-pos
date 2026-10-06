@@ -62,6 +62,17 @@ jobs:
           --manifest "setup_admin.manifest"
           lunchpop_setup.py
 
+      - name: Backup 빌드
+        shell: cmd
+        run: >
+          python -m PyInstaller
+          --onefile --noconsole
+          --name "LunchPop_Backup"
+          --icon "assets/logo.ico"
+          --hidden-import=win32print
+          --hidden-import=pywintypes
+          lunchpop_backup.py
+
       - name: SHA256 계산
         id: sha256
         shell: powershell
@@ -97,4 +108,5 @@ jobs:
             dist/LunchPop_Setup.exe
             dist/LunchPop_Launcher.exe
             dist/LunchPop_Master.exe
+            dist/LunchPop_Backup.exe
           make_latest: true
