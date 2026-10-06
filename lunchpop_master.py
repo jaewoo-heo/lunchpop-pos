@@ -74,6 +74,7 @@ GLOBAL_ORDERS = []
 printed_ids = set()          # 인쇄 완료 orderNo 세트 (서버 재응답 시 덮어쓰기 방지)
 reprint_in_progress = set()  # 재출력 진행 중인 orderNo (중복 출력 방지)
 alerted_ids = set()          # 알람 재생한 orderNo 세트 (매 60초 중복 알람 방지)
+past_logged_ids = set()      # 지난 주문 보류 로그를 이미 남긴 orderNo (매 60초 로그 도배 방지)
 dashboard = None
 PRINTER_SETTING = "기본 프린터"
 MY_STORE_NAME = ""
@@ -528,6 +529,20 @@ def process_test_print(printer_override=None):
         messagebox.showerror("실패", f"프린터 연결을 확인해주세요.\n현재 설정: {printer_override or PRINTER_SETTING}")
 
 
+def _is_past_order(order, today):
+    """배달일자(resDate)가 오늘보다 이전이면 True. 재출력 등으로 인쇄완료 기록이
+    누락된 전날 주문이 다음날 재시작 시 자동으로 다시 인쇄되는 것을 막기 위함.
+    날짜를 읽을 수 없으면 기존처럼 인쇄되도록 False."""
+    m = re.search(r'(\d{4})\D+(\d{1,2})\D+(\d{1,2})', str(order.get('resDate', '')))
+    if not m:
+        return False
+    try:
+        res_day = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3))).date()
+    except ValueError:
+        return False
+    return res_day < today
+
+
 def _sanitize(text):
     """제어문자 제거 — 주문 데이터에 섞인 제어문자가 ESC/POS 명령으로
     해석되어 캐시서랍 오픈/용지 낭비 등을 일으키는 것을 방지."""
@@ -681,6 +696,7 @@ def run_auto_printer():
                 with orders_lock:
                     GLOBAL_ORDERS = [o for o in GLOBAL_ORDERS if not o.get('isPrinted')]
                     printed_ids.clear()
+                    past_logged_ids.clear()
                 last_cleanup_date = today_str
                 write_remote_log("[INFO] 새벽 메모리 정리 완료")
 
@@ -717,9 +733,18 @@ def run_auto_printer():
                         GLOBAL_ORDERS = server_data
 
                     with orders_lock:
-                        pending = [o for o in GLOBAL_ORDERS if o.get('isQueued') and not o.get('isPrinted')]
+                        unprinted = [o for o in GLOBAL_ORDERS if o.get('isQueued') and not o.get('isPrinted')]
+                        # 지난 날짜 주문은 자동인쇄/알람에서 제외 (주문리스트에서 수동 재출력은 가능)
+                        past = [o for o in unprinted if _is_past_order(o, now.date())]
+                        pending = [o for o in unprinted if o not in past]
                         total = len(GLOBAL_ORDERS)
                         done_count = len([o for o in GLOBAL_ORDERS if o.get('isPrinted')])
+
+                    for o in past:
+                        ono = o.get('orderNo', '')
+                        if ono and ono not in past_logged_ids:
+                            past_logged_ids.add(ono)
+                            write_remote_log(f"[WARN] 지난 주문 자동인쇄 보류: {ono} (배달일자 {o.get('resDate', '')})")
 
                     if dashboard:
                         t, d, p = total, done_count, len(pending)
