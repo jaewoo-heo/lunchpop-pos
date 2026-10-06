@@ -27,7 +27,7 @@ ctk.set_default_color_theme("blue")
 # ==========================================
 # [설정] 버전 및 URL
 # ==========================================
-CURRENT_VERSION = 4.4
+CURRENT_VERSION = 4.5
 TARGET_EXE_NAME = "LunchPop_Master.exe"
 
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzG_q6m1svwhZZny0DAz1s29qEGfVUO_gdnUOelX5QmIKPjTM8kvYjYhro_b7b_7w/exec"
@@ -546,6 +546,7 @@ def _build_receipt_bytes(order, is_reprint=False):
     quantity = _sanitize(order.get('quantity', ''))
     order_no = _sanitize(order.get('orderNo', ''))
     delivery_time = _sanitize(order.get('deliveryTime', ''))
+    res_date = _sanitize(order.get('resDate', ''))
 
     reprint_tag = "[ 재출력 ]\n" if is_reprint else ""
     cook_time = ""
@@ -573,6 +574,7 @@ def _build_receipt_bytes(order, is_reprint=False):
          f"------------------------------------------\n"
          f"주문자: {customer_name}\n"
          f"주문번호: {order_no}\n"
+         f"배달일자: {res_date}\n"
          f"배달예정: {delivery_time}\n"
          f"조리완료: {cook_time} (목표)\n"
          f"------------------------------------------\n").encode('cp949', errors='replace')

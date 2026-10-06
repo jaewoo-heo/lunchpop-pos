@@ -1,5 +1,5 @@
 """
-KitchenPic 백업 출력 프로그램 v1.0
+KitchenPic 백업 출력 프로그램 v1.1
 - 매장 PC(Master)에 장애가 생겼을 때, 시설 관리실 PC에서 해당 매장의 미인쇄
   주문을 대신 조회 → 인쇄 → 인쇄완료 처리하기 위한 온디맨드 도구.
 - 상시 실행 프로그램이 아님 (자동 폴링/시작프로그램 등록 없음, 문제 발생 시에만 수동 실행).
@@ -23,7 +23,7 @@ import serial
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
-BACKUP_VERSION = "1.0"
+BACKUP_VERSION = "1.1"
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzG_q6m1svwhZZny0DAz1s29qEGfVUO_gdnUOelX5QmIKPjTM8kvYjYhro_b7b_7w/exec"
 # Master와 동일한 공유 인증 키. STRICT 모드에서도 이 도구가 계속 동작하도록 함.
 API_KEY = "7d7bcc91e8ba535b5c7d43ed4b81c9865141ad2d15a52e17"
@@ -162,6 +162,7 @@ def _build_receipt_bytes(order):
     quantity = _sanitize(order.get('quantity', ''))
     order_no = _sanitize(order.get('orderNo', ''))
     delivery_time = _sanitize(order.get('deliveryTime', ''))
+    res_date = _sanitize(order.get('resDate', ''))
 
     cook_time = ""
     if delivery_time:
@@ -186,6 +187,7 @@ def _build_receipt_bytes(order):
          f"------------------------------------------\n"
          f"주문자: {customer_name}\n"
          f"주문번호: {order_no}\n"
+         f"배달일자: {res_date}\n"
          f"배달예정: {delivery_time}\n"
          f"조리완료: {cook_time} (목표)\n"
          f"------------------------------------------\n").encode('cp949', errors='replace')
