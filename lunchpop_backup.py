@@ -59,6 +59,19 @@ def save_config(data):
 
 CONFIG = load_config()
 
+# COM(시리얼) 프린터 통신 속도 — lunchpop_master.py와 동일한 목록/검증
+BAUD_RATES = [2400, 4800, 9600, 14400, 19200, 38400, 57600, 115200, 128000]
+DEFAULT_BAUD = 9600
+
+
+def parse_baud(value):
+    """통신 속도 문자열/숫자를 int로 변환. 잘못된 값이면 None."""
+    try:
+        b = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return b if 300 <= b <= 921600 else None
+
 
 def _sanitize(text):
     """제어문자 제거 — 주문 데이터에 섞인 제어문자가 ESC/POS 명령으로 해석되는 것을 방지."""
@@ -94,7 +107,7 @@ def send_mark_done(row_index, order_no, retries=3):
     return isinstance(data, dict) and data.get("status") == "success"
 
 
-def print_raw_text(receipt_bytes, printer):
+def print_raw_text(receipt_bytes, printer, baud=DEFAULT_BAUD):
     """프린터에 RAW 데이터 전송 (lunchpop_master.py의 print_raw_text와 동일한 로직)."""
     last_err = ""
     for attempt in range(3):
@@ -112,7 +125,7 @@ def print_raw_text(receipt_bytes, printer):
                     win32print.ClosePrinter(hPrinter)
                 return True
             elif printer.startswith("COM"):
-                with serial.Serial(printer, 9600, timeout=2) as ser:
+                with serial.Serial(printer, baud, timeout=2) as ser:
                     ser.write(b'\x10\x04\x04')
                     status = ser.read(1)
                     if status and (ord(status) & 0x60) == 0x60:
@@ -267,6 +280,14 @@ class BackupApp:
         self.printer_combo.set(CONFIG.get("printer", "기본 프린터"))
         self.printer_combo.bind("<<ComboboxSelected>>", self.on_printer_change)
 
+        ctk.CTkLabel(row2, text="속도", font=ctk.CTkFont("맑은 고딕", 11, "bold")).pack(side="left")
+        self.baud_combo = ttk.Combobox(row2, font=("맑은 고딕", 11), width=8,
+                                        values=[str(b) for b in BAUD_RATES], state="normal")
+        self.baud_combo.pack(side="left", padx=(6, 10))
+        self.baud_combo.set(str(parse_baud(CONFIG.get("baudrate")) or DEFAULT_BAUD))
+        self.baud_combo.bind("<<ComboboxSelected>>", self.on_printer_change)
+        self.baud_combo.bind("<FocusOut>", self.on_printer_change)
+
         self.test_btn = ctk.CTkButton(row2, text="테스트 인쇄", width=100,
                                        fg_color="#7f8c8d", hover_color="#636e72",
                                        command=self.on_test_print)
@@ -284,14 +305,27 @@ class BackupApp:
 
     def on_printer_change(self, *_):
         CONFIG["printer"] = self.printer_combo.get().strip()
+        baud = parse_baud(self.baud_combo.get())
+        if baud is not None:
+            CONFIG["baudrate"] = baud
         save_config(CONFIG)
+
+    def _get_baud(self):
+        """입력된 통신 속도 반환. 잘못된 값이면 경고 후 None."""
+        baud = parse_baud(self.baud_combo.get())
+        if baud is None:
+            messagebox.showwarning("경고", "통신 속도는 숫자로 입력해주세요. (예: 9600, 115200)")
+        return baud
 
     def on_test_print(self):
         printer = self.printer_combo.get().strip()
+        baud = self._get_baud()
+        if baud is None:
+            return
         self.test_btn.configure(state="disabled", text="인쇄 중...")
 
         def worker():
-            ok = print_raw_text(_build_test_bytes(), printer)
+            ok = print_raw_text(_build_test_bytes(), printer, baud)
             def apply():
                 self.test_btn.configure(state="normal", text="테스트 인쇄")
                 if ok:
@@ -375,6 +409,9 @@ class BackupApp:
             messagebox.showwarning("경고", "인쇄할 주문을 선택해주세요.")
             return
         targets = [self.orders[i] for i in sel]
+        baud = self._get_baud()
+        if baud is None:
+            return
         if not messagebox.askyesno(
                 "인쇄 확인",
                 f"선택한 {len(targets)}건을 이 PC의 프린터로 인쇄합니다.\n"
@@ -391,7 +428,7 @@ class BackupApp:
                 order_no = o.get('orderNo', '')
                 try:
                     receipt = _build_receipt_bytes(o)
-                    if not print_raw_text(receipt, printer):
+                    if not print_raw_text(receipt, printer, baud):
                         fail_list.append(f"{order_no} — 인쇄 실패 (프린터 확인 필요)")
                         continue
                     if send_mark_done(o.get('rowIndex', ''), order_no):
