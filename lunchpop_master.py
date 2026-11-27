@@ -27,7 +27,7 @@ ctk.set_default_color_theme("blue")
 # ==========================================
 # [설정] 버전 및 URL
 # ==========================================
-CURRENT_VERSION = 4.6
+CURRENT_VERSION = 4.7
 TARGET_EXE_NAME = "LunchPop_Master.exe"
 
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzG_q6m1svwhZZny0DAz1s29qEGfVUO_gdnUOelX5QmIKPjTM8kvYjYhro_b7b_7w/exec"
@@ -78,6 +78,21 @@ past_logged_ids = set()      # 지난 주문 보류 로그를 이미 남긴 orde
 dashboard = None
 PRINTER_SETTING = "기본 프린터"
 MY_STORE_NAME = ""
+
+# COM(시리얼) 프린터 통신 속도. 기기마다 다름 (대부분 9600, 카드단말기 겸용 기기 등은 더 빠름).
+# 목록에 없는 값도 설정창에서 직접 입력 가능.
+BAUD_RATES = [2400, 4800, 9600, 14400, 19200, 38400, 57600, 115200, 128000]
+DEFAULT_BAUD = 9600
+BAUD_SETTING = DEFAULT_BAUD
+
+
+def parse_baud(value):
+    """통신 속도 문자열/숫자를 int로 변환. 잘못된 값이면 None."""
+    try:
+        b = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return b if 300 <= b <= 921600 else None
 consecutive_fail_count = 0
 _polling_thread = None          # 폴링 스레드 레퍼런스 (watchdog용)
 
@@ -394,6 +409,15 @@ def select_store_ui():
     printer_combo.pack(padx=20, pady=(8, 0), anchor="w")
     printer_combo.set(CONFIG.get("printer", "기본 프린터"))
 
+    ctk.CTkLabel(card, text="통신 속도 (COM 포트 프린터만 해당 · 목록에 없으면 직접 입력)",
+                  font=ctk.CTkFont("맑은 고딕", 10),
+                  text_color="#95a5a6").pack(anchor="w", padx=20, pady=(10, 0))
+    baud_combo = ttk.Combobox(card, style="LP.TCombobox",
+                               font=("맑은 고딕", 11), width=12,
+                               values=[str(b) for b in BAUD_RATES], state="normal")
+    baud_combo.pack(padx=20, pady=(6, 0), anchor="w")
+    baud_combo.set(str(parse_baud(CONFIG.get("baudrate")) or DEFAULT_BAUD))
+
     ctk.CTkFrame(card, height=1, fg_color="#f0f0f0").pack(fill="x", padx=20, pady=16)
 
     autostart_var = tk.BooleanVar(value=True)
@@ -443,14 +467,20 @@ def select_store_ui():
     threading.Thread(target=load_stores, daemon=True).start()
 
     def on_confirm():
-        global PRINTER_SETTING, MY_STORE_NAME
+        global PRINTER_SETTING, MY_STORE_NAME, BAUD_SETTING
         MY_STORE_NAME = store_combo.get().strip()
         if not MY_STORE_NAME:
             messagebox.showwarning("경고", "매장명을 선택해주세요.")
             return
+        baud = parse_baud(baud_combo.get())
+        if baud is None:
+            messagebox.showwarning("경고", "통신 속도는 숫자로 입력해주세요. (예: 9600, 115200)")
+            return
         PRINTER_SETTING = printer_combo.get().strip()
+        BAUD_SETTING = baud
         CONFIG["storeName"] = MY_STORE_NAME
         CONFIG["printer"] = PRINTER_SETTING
+        CONFIG["baudrate"] = BAUD_SETTING
         CONFIG["autostart"] = autostart_var.get()
         if not save_config(CONFIG):
             messagebox.showerror("오류", "설정 저장에 실패했습니다.\n디스크 용량을 확인해주세요.")
@@ -466,12 +496,13 @@ def select_store_ui():
 # ==========================================
 # [2] 인쇄 핵심 로직
 # ==========================================
-def print_raw_text(receipt_bytes, printer_override=None):
+def print_raw_text(receipt_bytes, printer_override=None, baud_override=None):
     """프린터에 RAW 데이터 전송. _print_lock으로 동시 인쇄 방지.
     printer_override 지정 시 전역 PRINTER_SETTING을 건드리지 않고 해당 프린터로만 시도
     (테스트 출력 중 실제 주문이 잘못된 프린터로 나가는 레이스 컨디션 방지)."""
     last_err = ""
     printer = printer_override if printer_override is not None else PRINTER_SETTING
+    baud = baud_override if baud_override is not None else BAUD_SETTING
     with _print_lock:
         for attempt in range(3):
             try:
@@ -488,7 +519,7 @@ def print_raw_text(receipt_bytes, printer_override=None):
                         win32print.ClosePrinter(hPrinter)
                     return True
                 elif printer.startswith("COM"):
-                    with serial.Serial(printer, 9600, timeout=2) as ser:
+                    with serial.Serial(printer, baud, timeout=2) as ser:
                         ser.write(b'\x10\x04\x04')
                         status = ser.read(1)
                         if status and (ord(status) & 0x60) == 0x60:
@@ -512,21 +543,26 @@ def print_raw_text(receipt_bytes, printer_override=None):
                 last_err = str(e)
                 write_local_log(f"[WARN] 인쇄 시도 {attempt + 1}/3 실패: {e}")
                 time.sleep(1)
-        write_remote_log(f"[ERR] PRINT FATAL ({printer}): {last_err}")
+        port_desc = f"{printer} @ {baud}bps" if printer.startswith("COM") else printer
+        write_remote_log(f"[ERR] PRINT FATAL ({port_desc}): {last_err}")
         return False
 
 
-def process_test_print(printer_override=None):
+def process_test_print(printer_override=None, baud_override=None):
     CMD_INIT = b'\x1B\x40'
     CMD_ALIGN_CENTER = b'\x1B\x61\x01'
     CMD_CUT = b'\x1D\x56\x42\x00'
     test_data = (CMD_INIT + CMD_ALIGN_CENTER +
                  "\n[ KitchenPic 프린터 테스트 ]\n\n정상적으로 연결되었습니다.\n\n바쁜 일상이 좀 더 편해지도록, KitchenPic\n\n\n\n\n"
                  .encode('cp949', errors='replace') + CMD_CUT)
-    if print_raw_text(test_data, printer_override):
+    printer = printer_override or PRINTER_SETTING
+    baud = baud_override if baud_override is not None else BAUD_SETTING
+    if print_raw_text(test_data, printer_override, baud_override):
         messagebox.showinfo("성공", "테스트 용지가 출력되었습니다.")
     else:
-        messagebox.showerror("실패", f"프린터 연결을 확인해주세요.\n현재 설정: {printer_override or PRINTER_SETTING}")
+        desc = f"{printer} (통신 속도 {baud})" if printer.startswith("COM") else printer
+        messagebox.showerror("실패", f"프린터 연결을 확인해주세요.\n현재 설정: {desc}\n\n"
+                             "COM 프린터라면 통신 속도가 기기와 같은지 확인해주세요.")
 
 
 def _is_past_order(order, today):
@@ -650,7 +686,7 @@ def check_printer_online():
     """프린터 온라인 상태 사전 확인"""
     try:
         if PRINTER_SETTING.startswith("COM"):
-            with serial.Serial(PRINTER_SETTING, 9600, timeout=1):
+            with serial.Serial(PRINTER_SETTING, BAUD_SETTING, timeout=1):
                 return True
         else:
             p_name = win32print.GetDefaultPrinter() if PRINTER_SETTING == "기본 프린터" else PRINTER_SETTING
@@ -668,7 +704,8 @@ def check_printer_online():
 def run_auto_printer():
     global GLOBAL_ORDERS, dashboard, consecutive_fail_count, alerted_ids
 
-    write_remote_log(f"[INFO] CONNECTED v{CURRENT_VERSION} ({PRINTER_SETTING})")
+    port_desc = f"{PRINTER_SETTING} @ {BAUD_SETTING}bps" if PRINTER_SETTING.startswith("COM") else PRINTER_SETTING
+    write_remote_log(f"[INFO] CONNECTED v{CURRENT_VERSION} ({port_desc})")
     last_cleanup_date = ""
     heartbeat_counter = 0
     printer_ok = True          # 프린터 이전 상태 (변경 시에만 알림)
@@ -1088,15 +1125,21 @@ class SmartDashboard:
 
         # ── 탭1: 설정 콘텐츠 ──
         def _save():
-            global PRINTER_SETTING, MY_STORE_NAME
+            global PRINTER_SETTING, MY_STORE_NAME, BAUD_SETTING
             new_store = store_entry.get().strip()
             if not new_store:
                 messagebox.showwarning("경고", "매장명을 입력해주세요.", parent=win)
                 return
+            new_baud = parse_baud(baud_cb.get())
+            if new_baud is None:
+                messagebox.showwarning("경고", "통신 속도는 숫자로 입력해주세요. (예: 9600, 115200)", parent=win)
+                return
             PRINTER_SETTING = cb.get()
+            BAUD_SETTING = new_baud
             MY_STORE_NAME = new_store
             CONFIG["storeName"] = MY_STORE_NAME
             CONFIG["printer"] = PRINTER_SETTING
+            CONFIG["baudrate"] = BAUD_SETTING
             CONFIG["autostart"] = av.get()
             if save_config(CONFIG):
                 set_autostart_registry(av.get())
@@ -1154,13 +1197,26 @@ class SmartDashboard:
         cb.pack(anchor="w", padx=PAD)
         cb.set(PRINTER_SETTING)
 
+        ctk.CTkLabel(scroll_s, text="통신 속도 (COM 포트만 해당 · 직접 입력 가능)",
+                      font=ctk.CTkFont("맑은 고딕", 10),
+                      text_color="#95a5a6").pack(anchor="w", padx=PAD, pady=(10, 2))
+        baud_cb = ttk.Combobox(scroll_s, style="LP.TCombobox",
+                                font=("맑은 고딕", 11), width=12,
+                                values=[str(b) for b in BAUD_RATES], state="normal")
+        baud_cb.pack(anchor="w", padx=PAD)
+        baud_cb.set(str(BAUD_SETTING))
+
         def do_test():
-            btn_test.configure(text="출력 중...", state="disabled")
             test_printer = cb.get()
+            test_baud = parse_baud(baud_cb.get())
+            if test_baud is None:
+                messagebox.showwarning("경고", "통신 속도는 숫자로 입력해주세요. (예: 9600, 115200)", parent=win)
+                return
+            btn_test.configure(text="출력 중...", state="disabled")
 
             def _run():
                 try:
-                    process_test_print(test_printer)
+                    process_test_print(test_printer, test_baud)
                 finally:
                     try:
                         win.after(0, lambda: btn_test.configure(text="테스트 출력", state="normal"))
@@ -1418,6 +1474,7 @@ if __name__ == '__main__':
 
     MY_STORE_NAME = CONFIG["storeName"]
     PRINTER_SETTING = CONFIG.get("printer", "기본 프린터")
+    BAUD_SETTING = parse_baud(CONFIG.get("baudrate")) or DEFAULT_BAUD
     set_autostart_registry(CONFIG.get("autostart", True))
 
     dashboard = SmartDashboard()
